@@ -5,15 +5,15 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name='songcn',
-    version='0.0.1',
+    version='0.0.4',
     author='Bo Zhang',
     author_email='bozhang@nao.cas.cn',
-    description='The SONG-China project.',  # short description
+    description='The SONG-China data processing pipeline.', # short description
     long_description=long_description,
     long_description_content_type="text/markdown",
     url='http://github.com/hypergravity/songcn',
-    #packages=setuptools.find_packages(),
-    packages=['song', 'twodspec', 'twodspec/extern'],
+    packages=setuptools.find_packages(),
+    #packages=['song', 'twodspec'],
     license='MIT',
     classifiers=["Development Status :: 5 - Production/Stable",
                  "Intended Audience :: Science/Research",
@@ -22,11 +22,14 @@ setuptools.setup(
                  "Programming Language :: Python :: 3.7",
                  "Topic :: Scientific/Engineering :: Physics",
                  "Topic :: Scientific/Engineering :: Astronomy"],
-    package_dir={'regli': 'regli'},
-    package_data={"song": ['calibration/thar_template/*',
-                           'calibration/*'],
-                  "": ["LICENSE"]},
-    include_package_data=True,
+    # package_dir={'song': 'song',
+    #              'twodspec': 'twodspec'}, commented because it's wrong
+    package_data={"song": ['calibration/*',
+                           'calibration/thar_template/*',
+                           'data/*'],
+                  "": ["LICENSE"]
+                  },
+    #include_package_data=True, commented to include data!
     requires=['numpy', 'scipy', 'matplotlib', 'astropy', 'skimage',
-              'joblib', 'ccdproc', 'tqdm']
+              'joblib', 'ccdproc']
 )
