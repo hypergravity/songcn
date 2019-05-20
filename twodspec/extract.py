@@ -22,6 +22,7 @@ def center_to_edges(centers):
                       centers[:-1] + 0.5 * np.diff(centers),
                       1.5 * centers[-1] - 0.5 * centers[-2]))
 
+
 ####################################
 # aperture processing function
 ####################################

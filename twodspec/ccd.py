@@ -227,6 +227,18 @@ class CCD(np.ndarray):
         else:
             raise ValueError("@CCD.combine: bad method [{}]".format(method))
 
+    @staticmethod
+    def mean(ccds):
+        return np.mean(ccds, axis=0)
+
+    @staticmethod
+    def median(ccds):
+        return np.median(ccds, axis=0)
+
+    @staticmethod
+    def std(ccds):
+        return np.std(ccds, axis=0)
+
     def write(self, fp, overwrite=True):
         phdu = fits.PrimaryHDU(data=self, header=fits.Header(self.meta))
         phdu.writeto(fp, overwrite=overwrite)
