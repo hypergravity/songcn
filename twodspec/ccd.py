@@ -28,7 +28,7 @@ class CCD(np.ndarray):
     fp = ""
     hdu = 0
     header = None
-    meta = None
+    meta = OrderedDict()
 
     # post-processing info
     _trim = None
@@ -92,19 +92,23 @@ class CCD(np.ndarray):
         data = np.array(data, dtype=np.float, order=order)
 
         # substantiate
-        data = super(CCD, subtype).__new__(subtype, shape=data.shape,
-                                           dtype=data.dtype, buffer=data,
-                                           offset=offset, strides=strides,
-                                           order=order)
+        ccd = super(CCD, subtype).__new__(subtype, shape=data.shape,
+                                          dtype=data.dtype, buffer=data,
+                                          offset=offset, strides=strides,
+                                          order=order)
 
         # set info
-        data.gain = gain
-        data.ron = ron
-        data.unit = unit
-        data._trim = trim
-        data._rot90 = rot90
+        ccd.gain = gain
+        ccd.ron = ron
+        ccd.unit = unit
 
-        return data
+        ccd._trim = trim
+        ccd._rot90 = rot90
+
+        ccd.header = header
+        ccd.meta = OrderedDict(header)
+
+        return ccd
 
     # def __array_finalize__(self, obj):
     #     if obj is None:
@@ -222,6 +226,11 @@ class CCD(np.ndarray):
             return np.mean(ccds, axis=0)
         else:
             raise ValueError("@CCD.combine: bad method [{}]".format(method))
+
+    def write(self, fp, overwrite=True):
+        phdu = fits.PrimaryHDU(data=self, header=fits.Header(self.meta))
+        phdu.writeto(fp, overwrite=overwrite)
+        return
 
 
 def test2():
