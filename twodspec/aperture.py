@@ -157,7 +157,7 @@ class Aperture(object):
         self.ap_center = ap_center
         if ap_center is not None:
             self.ap_lower = ap_center-ap_width
-            self.ap_upper = ap_center-ap_width
+            self.ap_upper = ap_center+ap_width
 
         return
 
@@ -213,7 +213,7 @@ class Aperture(object):
         if verbose:
             print("@Aperture: getting image info ...")
         ap.get_image_info(flat)
-        return
+        return ap
 
     def get_image_info(self, image):
         """ get image information """

@@ -35,11 +35,22 @@ def get_aperture_section(im, ap_center_interp, ap_width=15):
     # cut image to get this aperture region
     ap_center_interp_floor = np.floor(ap_center_interp).astype(int)
     # ap_center_interp_rmdr= ap_center_interp-ap_center_interp_floor
-    ap_im = np.array([im[i, ap_center_interp_floor[i] - ap_width:ap_center_interp_floor[i] + ap_width + 2] for i in range(n_rows)])
-    ap_im_xx = np.array([im_xx[i, ap_center_interp_floor[i] - ap_width:ap_center_interp_floor[i] + ap_width + 2] for i in range(n_rows)])
-    ap_im_xx_cor = ap_im_xx - ap_center_interp.reshape(-1, 1)
-    ap_im_yy = np.array([im_yy[i, ap_center_interp_floor[i] - ap_width:ap_center_interp_floor[i] + ap_width + 2] for i in range(n_rows)])
 
+    ap_im_nrows = n_rows
+    ap_im_ncols = ap_width*2+2
+
+    ap_im_xx = ap_center_interp_floor.reshape(-1, 1)+np.arange(-ap_width, ap_width+2)
+    ap_im_yy = im_yy[:, :ap_im_ncols]
+
+    ap_im_xx_flat = ap_im_xx.flatten()
+    ap_im_yy_flat = ap_im_yy.flatten()
+    ap_im_flat = np.zeros_like(ap_im_xx_flat, dtype=np.float)
+
+    ind_valid = (ap_im_xx_flat >= 0) & (ap_im_xx_flat <= n_cols-1)
+    ap_im_flat[ind_valid] = im[ap_im_yy_flat[ind_valid], ap_im_xx_flat[ind_valid]]
+    ap_im = ap_im_flat.reshape(ap_im_xx.shape)
+
+    ap_im_xx_cor = ap_im_xx - ap_center_interp.reshape(-1, 1)
     return ap_im, ap_im_xx, ap_im_yy, ap_im_xx_cor
 
 
@@ -262,12 +273,12 @@ def local_filter1(x, kw=5, method="mean"):
         raise(ValueError("bad value for method!"))
 
     xs = np.copy(x)
-    for i in range(kw, len(x) - kw):
-        xs[i] = f(x[i - kw:i + kw + 1])
+    for i in range(kw, np.int(len(x) - kw)):
+        xs[i] = f(x[np.int(i - kw):np.int(i + kw + 1)])
     return xs
 
 
-def make_normflat(im, ap, max_dqe=0.04, min_snr=20, smooth_blaze=5.,
+def make_normflat(im, ap, max_dqe=0.04, min_snr=20, smooth_blaze=5,
                   n_chunks=8, ap_width=15,
                   profile_oversample=10, profile_smoothness=1e-2,
                   num_sigma_clipping=20, gain=1., ron=0):
@@ -283,9 +294,9 @@ def make_normflat(im, ap, max_dqe=0.04, min_snr=20, smooth_blaze=5.,
                              num_sigma_clipping=num_sigma_clipping,
                              gain=gain, ron=ron)
         # smooth blaze function
-        this_blaze_smoothed1 = local_filter1(r["spec_extr1"], kw=smooth_blaze,
+        this_blaze_smoothed1 = local_filter1(r["spec_extr1"], kw=np.int(smooth_blaze),
                                              method="median")
-        this_blaze_smoothed2 = local_filter1(this_blaze_smoothed1, kw=smooth_blaze,
+        this_blaze_smoothed2 = local_filter1(this_blaze_smoothed1, kw=np.int(smooth_blaze),
                                              method="mean")
         blaze.append(this_blaze_smoothed2)
         im_recon[r["ap_im_yy"], r["ap_im_xx"]] = r["prof_recon"] * this_blaze_smoothed2.reshape(-1, 1)

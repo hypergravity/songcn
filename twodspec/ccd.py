@@ -106,7 +106,10 @@ class CCD(np.ndarray):
         ccd._rot90 = rot90
 
         ccd.header = header
-        ccd.meta = OrderedDict(header)
+        if header is None:
+            ccd.meta = OrderedDict()
+        else:
+            ccd.meta = OrderedDict(header)
 
         return ccd
 
@@ -124,6 +127,24 @@ class CCD(np.ndarray):
     ###########################
     # read from fits
     ###########################
+    @staticmethod
+    def reads(fps=["",], method="median", std=False,
+              hdu=0, gain=1., ron=0., unit="adu", trim=None, rot90=0):
+        ccds = [CCD.read(fp, hdu=hdu, gain=gain, ron=ron, unit=unit, trim=trim,
+                         rot90=rot90) for fp in fps]
+        if method == "median":
+            ccd_comb = CCD.median(ccds)
+        elif method == "mean":
+            ccd_comb = CCD.mean(ccds)
+        else:
+            raise ValueError("@CCD.combine: bad method [{}]".format(method))
+
+        if not std:
+            return ccd_comb
+        else:
+            return ccd_comb, CCD.std(ccds)
+
+
     @staticmethod
     def read(fp="", hdu=0, gain=1., ron=0., unit="adu", trim=None, rot90=0):
         if os.path.exists(fp):
@@ -229,15 +250,15 @@ class CCD(np.ndarray):
 
     @staticmethod
     def mean(ccds):
-        return np.mean(ccds, axis=0)
+        return CCD(np.mean(ccds, axis=0))
 
     @staticmethod
     def median(ccds):
-        return np.median(ccds, axis=0)
+        return CCD(np.median(ccds, axis=0))
 
     @staticmethod
     def std(ccds):
-        return np.std(ccds, axis=0)
+        return CCD(np.std(ccds, axis=0))
 
     def write(self, fp, overwrite=True):
         phdu = fits.PrimaryHDU(data=self, header=fits.Header(self.meta))

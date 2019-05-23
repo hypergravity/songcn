@@ -19,7 +19,8 @@ Modifications
 
 Aims
 ----
-- utils for calibration
+- wavelength calibration module
+    all operations are based on extracted ThAr (1d)
 
 """
 
@@ -36,13 +37,28 @@ from scipy.optimize import curve_fit, leastsq
 #      fix thar spectra
 # ############################## #
 
-def fix_thar_sat_neg(thar1d, arm=20, sat_count=50000):
+def thar1d_fix(thar1d, conv_len=20, sat_count=50000):
+    """ fix thar image, particularly for negative & saturated pixels
+
+    Parameters
+    ----------
+    conv_len:
+        convolved length
+    sat_count:
+        saturated count / max count
+
+    Return
+    ------
+    thar1d_fixed:
+        fixed THAR image
+
+    """
     # ind_sat_conv
     ind_sat = thar1d >= sat_count
     ind_sat_conv = np.zeros_like(ind_sat)
     x_sat, y_sat = np.where(ind_sat)
     for i in range(len(x_sat)):
-        ind_sat_conv[x_sat[i], y_sat[i] - arm:y_sat[i] + arm] = 1
+        ind_sat_conv[x_sat[i], y_sat[i] - conv_len:y_sat[i] + conv_len] = 1
     # ind_neg
     ind_neg = thar1d < 0.
     # combine to ind_bad
@@ -53,11 +69,11 @@ def fix_thar_sat_neg(thar1d, arm=20, sat_count=50000):
 
 
 # ############################## #
-#      2d correlation
+#  2d correlation for 1d thar
 # ############################## #
 
-def thar_corr2d(thar1d_fixed, thar_temp, xtrim=(1024, 3072), ytrim=(53, 73),
-                x_shiftmax=20, y_shiftmax=5, verbose=False):
+def thar1d_corr2d(thar1d_fixed, thar_temp, x_shiftmax=20, y_shiftmax=5,
+                  verbose=False):
     """ determine the shift of *thar1d_fixed* relative to *thar_temp*
 
     Parameters
@@ -82,10 +98,8 @@ def thar_corr2d(thar1d_fixed, thar_temp, xtrim=(1024, 3072), ytrim=(53, 73),
     """
 
     # default trim region is the center 1/4 area
-    if xtrim is None:
-        xtrim = (thar1d_fixed.shape[1] * np.array([.1, .9])).astype(int)
-    if ytrim is None:
-        ytrim = (thar1d_fixed.shape[0] * np.array([.1, .9])).astype(int)
+    xtrim = (thar1d_fixed.shape[1] * np.array([.2, .8])).astype(int)
+    ytrim = (thar1d_fixed.shape[0] * np.array([.2, .8])).astype(int)
 
     # in case that the input data are int
     thar1d_fixed = np.array(thar1d_fixed).astype(float)
@@ -119,7 +133,8 @@ def thar_corr2d(thar1d_fixed, thar_temp, xtrim=(1024, 3072), ytrim=(53, 73),
 #      shift wave & order
 # ############################## #
 
-def interpolate_wavelength_shift(w, shift, thar_temp, thar1d_fixed):
+def interpolate_wavelength(w, shift, thar_temp, thar1d_fixed):
+    """ interpolate given a regerence wavelength solution and shift """
     xshift, yshift = shift
 
     xcoord = np.arange(w.shape[1])
@@ -144,7 +159,7 @@ def interpolate_wavelength_shift(w, shift, thar_temp, thar1d_fixed):
     return w_x_y
 
 
-def interpolate_order_shift(order_temp, shift, thar1d_fixed):
+def interpolate_order(order_temp, shift, thar1d_fixed):
     xshift, yshift = shift
 
     # for X, no difference, for Y, orders are different
@@ -174,6 +189,7 @@ def load_thar_temp(thar_temp_path):
 
 def refine_thar_positions(wave_init, order_init, thar1d_fixed, thar_list,
                           fit_width=5., lc_tol=5., k=3, n_jobs=10, verbose=10):
+    """ refine ThAr positions """
     print("@TWODSPEC: refine ThAr positions ...")
 
     # refine thar positions for each order
@@ -189,7 +205,7 @@ def refine_thar_positions(wave_init, order_init, thar1d_fixed, thar_list,
         ) for i_order in range(wave_init.shape[0]))
 
     # remove all null values
-    null_value = (None, None, None, None, None)
+    null_value = None
     for i in range(r.count(null_value)):
         r.remove(null_value)
         # print(len(r))
@@ -208,7 +224,7 @@ def refine_thar_positions_order(this_wave_init, this_xcoord, this_thar,
                                 this_thar_list, this_order, fit_width=5.,
                                 lc_tol=5., k=3):
     if len(this_thar_list) == 0:
-        return None, None, None, None, None
+        return None
 
     popt_list = []
     pcov_list = []
@@ -348,10 +364,10 @@ def fit_grating_equation(lc_coord, lc_order, lc_thar, popt, pcov, ind_good_thar0
 
     # fit surface
     x0 = np.zeros(poly_order)
-    print(lc_coord_s, lc_order_s, ml_s, weight, poly_order)
+    #print(lc_coord_s, lc_order_s, ml_s, weight, poly_order)
     x0, ier = leastsq(residual, x0,
                       args=(lc_coord_s, lc_order_s, ml_s, weight, poly_order))
-    print(x0, ier)
+    #print(x0, ier)
 
     # iter
     if n_iter > 0:
