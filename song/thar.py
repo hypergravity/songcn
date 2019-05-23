@@ -13,36 +13,33 @@ SONG: 1800,  299792.458/6000*3A = 150km/s delta_rv = 5km/s
 """
 
 import numpy as np
-from astropy.io import fits
 from matplotlib import pyplot as plt
 from matplotlib.pyplot import cm
 from scipy.stats import binned_statistic
 
-import song
 from twodspec import calibration as calib
-
-print("@SONG: [ThAr] loading ThAr template ...")
-thar_list = np.loadtxt(song.__path__[0] + "/calibration/thar.dat")
-hl = fits.open(song.__path__[0] + "/calibration/thar_template/thar_template.fits")
-wave_temp = hl[1].data
-thar_temp = hl[2].data
-order_temp = hl[3].data
 
 
 def rms(x):
     return np.sqrt(np.mean(np.square(x)))
 
 
-def calibrate(thar1d_simple, slit):
+def nanrms(x):
+    return np.sqrt(np.nanmean(np.square(x)))
+
+
+def calibrate(thar1d_simple, thar_solution_temp, thar_list,
+              poly_order=(5, 10), slit=0):
+    wave_temp, thar_temp, order_temp = thar_solution_temp
+
     # 1.initial solution
     print("@SONG: [ThAr] 2D cross-correlation ...")
-    shift, corr2d = calib.thar_corr2d(
-        thar1d_simple, thar_temp, ytrim=(10, 40), xtrim=(512, 1536),
-        y_shiftmax=3, x_shiftmax=20)
+    shift, corr2d = calib.thar1d_corr2d(
+        thar1d_simple, thar_temp, y_shiftmax=3, x_shiftmax=20)
     print("@SONG: [ThAr] the shift is ", shift)
-    wave_init = calib.interpolate_wavelength_shift(
+    wave_init = calib.interpolate_wavelength(
         wave_temp, shift, thar_temp, thar1d_simple)
-    order_init = calib.interpolate_order_shift(
+    order_init = calib.interpolate_order(
         order_temp, shift, thar1d_simple) + 80
 
     print("@SONG: [ThAr] refine wavelength ...""")
@@ -66,7 +63,6 @@ def calibrate(thar1d_simple, slit):
 
     # 4. fit final solution
     print("@SONG: [ThAr] fit wavelength solution ")
-    poly_order = (5, 7)
     x_mini_lsq, ind_good_thar, scaler_coord, scaler_order, scaler_ml = calib.fit_grating_equation(
         lc_coord, lc_order, lc_thar, popt, pcov, ind_good_thar0=ind_good1,
         poly_order=poly_order, max_dev_threshold=.003, n_iter=1, lar=False,
@@ -97,7 +93,7 @@ def calibrate(thar1d_simple, slit):
                                       bins=bins)
     bins_rms, _, _ = binned_statistic(lc_thar[ind_good_thar],
                                       lc_thar_fitted[ind_good_thar] - lc_thar[
-                                          ind_good_thar], statistic=rms,
+                                          ind_good_thar], statistic=nanrms,
                                       bins=bins)
 
     """ [Figure]: calibration diagnostics """
