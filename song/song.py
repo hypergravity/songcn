@@ -102,10 +102,11 @@ class Song(Table):
     # THAR/STAR/FLATI2/TEST will be processed separately
     thar_list = dict()
     thari2_list = dict()
-    star_list = dict()
-    stari2_list = dict()
-    flati2_list = dict()
-    test_list = dict()
+
+    star_list = list()
+    stari2_list = list()
+    flati2_list = list()
+    test_list = list()
 
     # load ThAr template in Song class
     print("@SONG: [ThAr] loading ThAr template ...")
@@ -185,7 +186,7 @@ class Song(Table):
         print("@SONG: combined bias written to *{}*".format(self.master_bias_fp))
         return
 
-    def pipeline_flat(self, slits="all"):
+    def pipeline_flat(self, slits="all", n_jobs_trace=1, verbose=10):
 
         if slits == "all":
             slits = self.unique_slits
@@ -215,7 +216,7 @@ class Song(Table):
 
             # 4.choose best sigma (at least 50 orders, else raise error)
             sigmas = np.arange(1, 10, 0.3)
-            n_ap = Parallel(n_jobs=-1, verbose=0)(
+            n_ap = Parallel(n_jobs=n_jobs_trace, verbose=verbose)(
                 delayed(_try_trace_apertures)(np.array(flat), sigma_)
                 for sigma_ in sigmas)
             n_ap = np.array(n_ap)
@@ -336,18 +337,18 @@ class Song(Table):
             # 4.calibration
             calibration_results = thar.calibrate(
                 thar1d_simple, self.thar_solution_temp, self.thar_line_list,
-                poly_order=(5, 10), slit=slit)
+                poly_order=poly_order, slit=slit)
             sgrid_fitted_wave = calibration_results[0]
             wave_final = np.copy(np.flipud(sgrid_fitted_wave))
 
             # save figures
             fig = calibration_results[2]
             fig.savefig(self.dir_work + "thar{}_{:s}".format(
-                slit, thar_fn.replace(".fits", "_diagnostics.svg")))
+                slit, thar_fn.replace(".fits", "_diagnostics.pdf")))
             plt.close(fig)
             fig = calibration_results[3]
             fig.savefig(self.dir_work + "thar{}_{:s}".format(
-                slit, thar_fn.replace(".fits", "_used_lines.svg")))
+                slit, thar_fn.replace(".fits", "_used_lines.pdf")))
             plt.close(fig)
 
             # 5.ThAr results: [wave] [sp] [sp_err]
@@ -424,7 +425,8 @@ class Song(Table):
         sstar = Table(sstar[ind_unprocessed])
 
         r = Parallel(n_jobs=n_jobs, verbose=verbose)(
-            delayed(self._pipeline_a_star)(i_star) for i_star in sub_star[ind_unprocessed])
+            delayed(self._pipeline_a_star)(self["fps"][i_star])
+            for i_star in sub_star[ind_unprocessed])
 
         if key == "STAR":
             self.star_list.extend(r)
@@ -783,14 +785,15 @@ class Song(Table):
             plt.close(fig)
             return
 
-    def _pipeline_a_star(self, i_star):
+    def _pipeline_a_star(self, star_fp):
 
         # read STAR
-        file = self["FILE"][i_star]
-        slit = self['SLIT'][i_star]
-        mjdmid = self['MJD-MID'][i_star]
-        star_fp = self['fps'][i_star]
+        hdr = fits.getheader(star_fp)
+        slit = hdr["SLIT"]
+        mjdmid = hdr["MJD-MID"]
+
         star_fn = os.path.basename(star_fp)
+
         n_ap = self.master_flats[slit]["ap"].n_ap
         im_star = self.read(star_fp)
         im_meta = im_star.meta
@@ -818,7 +821,7 @@ class Song(Table):
                       " slit: ", self.thar_list[thar_keys[i]]["slit"])
             tharbfr = self.thar_list[thar_keys[ind_tharbfr]]["wave_final"]
             tharbfr_file = thar_keys[ind_tharbfr]
-            print("@SONG: STAR[{}] THAR0[{}]".format(file, tharbfr_file))
+            print("@SONG: STAR[{}] THAR0[{}]".format(star_fn, tharbfr_file))
         else:
             tharbfr = np.zeros((n_ap, 2048), dtype=float)
             tharbfr_file = ""
@@ -834,7 +837,7 @@ class Song(Table):
             ind_tharaft = sub_aft[ind_aft]
             tharaft = self.thar_list[thar_keys[ind_tharaft]]["wave_final"]
             tharaft_file = thar_keys[ind_tharaft]
-            print("@SONG: STAR[{}] THAR1[{}]".format(file, tharaft_file))
+            print("@SONG: STAR[{}] THAR1[{}]".format(star_fn, tharaft_file))
 
         # sensitivity correction
         im_star_denm = (im_star - self.master_bias) / self.master_flats[slit]['norm']
@@ -887,6 +890,8 @@ class Song(Table):
                          tharaft,  # wave after
                          star_opterr,  # opt error
                          star_err,
+                         star_robsp,
+                         star_roberr,
                          star_mask])  # simple error
 
         h0 = fits.hdu.PrimaryHDU(data, fits.Header(im_meta))
@@ -894,11 +899,15 @@ class Song(Table):
         hl.writeto(self.dir_work + "pstar{}_{:s}".format(slit, star_fn),
                    overwrite=True)
 
-        return file
+        return star_fn
 
 
 def _try_trace_apertures(flat, sigma_):
-    return Aperture.trace(flat, method="canny", sigma=sigma_, verbose=False).n_ap
+    try:
+        ap = Aperture.trace(flat, method="canny", sigma=sigma_, verbose=False)
+        return ap.n_ap
+    except Exception as e_:
+        return -1
 
 
 # used in draw()
