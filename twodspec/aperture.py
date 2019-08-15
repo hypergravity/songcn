@@ -783,5 +783,52 @@ class Scaler(object):
         return (np.array(data) + self.ofst_) / self.scale_
 
 
+# ###################################################################
+# A new method to trace apertures, based on mean & median smoothing.
+# ###################################################################
 
-
+# flat = None
+# from joblib import Parallel, delayed
+# from matplotlib.pyplot import *
+#
+# starting_column = 1024
+# starting_across = 2 # 2*starting_across rows will be used
+# ap_width = 15
+#
+# flat = np.array(flat)
+#
+#
+# def maxmin_smooth_1d(x, smooth_window_width=15):
+#     result =  np.copy(x)
+#     nx = len(x)
+#     for i in range(nx):
+#         i1 = np.max((i-smooth_window_width, 0))
+#         i2 = np.min((i+smooth_window_width+1, nx))
+#         this_chunk = x[i1:i2]
+#         result[i] = (np.max(this_chunk)+np.min(this_chunk))/2
+#     return result
+#
+#
+# def mean_smooth_1d(x, smooth_window_width=15):
+#     result =  np.copy(x)
+#     nx = len(x)
+#     for i in range(nx):
+#         i1 = np.max((i-smooth_window_width, 0))
+#         i2 = np.min((i+smooth_window_width+1, nx))
+#         this_chunk = x[i1:i2]
+#         result[i] = np.mean(this_chunk)
+#     return result
+#
+#
+# def maxmin_smooth_2d(a, smooth_window_width=15, n_jobs=-1, verbose=5):
+#     return np.array(Parallel(n_jobs=n_jobs, verbose=verbose)(
+#             delayed(maxmin_smooth_1d)(a[j], smooth_window_width) for j in range(a.shape[0])))
+#
+#
+# def mean_smooth_2d(a, smooth_window_width=5, n_jobs=-1, verbose=5):
+#     return np.array(Parallel(n_jobs=n_jobs, verbose=verbose)(
+#             delayed(mean_smooth_1d)(a[j], smooth_window_width) for j in range(a.shape[0])))
+#
+#
+# flat_smooth2 = mean_smooth_2d(maxmin_smooth_2d(flat, 20), 5)
+# flat_smooth1 = mean_smooth_2d(flat, 2)
