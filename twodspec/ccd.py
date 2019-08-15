@@ -248,17 +248,14 @@ class CCD(np.ndarray):
         else:
             raise ValueError("@CCD.combine: bad method [{}]".format(method))
 
-    @staticmethod
-    def mean(ccds):
-        return CCD(np.mean(ccds, axis=0))
+    def mean(self, axis=None):
+        return CCD(np.mean(self, axis=axis))
 
-    @staticmethod
-    def median(ccds):
-        return CCD(np.median(ccds, axis=0))
+    def median(self, axis=None):
+        return CCD(np.median(self, axis=axis))
 
-    @staticmethod
-    def std(ccds):
-        return CCD(np.std(ccds, axis=0))
+    def std(self, axis=None):
+        return CCD(np.std(self, axis=axis))
 
     def write(self, fp, overwrite=True):
         phdu = fits.PrimaryHDU(data=self, header=fits.Header(self.meta))
