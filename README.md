@@ -1,8 +1,11 @@
 ### **songcn**
 
-The SONG-China project data processing pipeline.
+**SONG** stands for **S**tellar **O**bservations **N**etwork **G**roup.
 
-*SmoothingSpline* is from https://github.com/wafo-project/pywafo
+This package, **songcn**, is designed for the [**SONG-China**](http://song.bao.ac.cn/) project.
+
+The affliated **song** package is the SONG-China project data processing pipeline.
+The affliated **twodspec** is to provide basic operations for raw 2D spectral data.
 
 
 ## structures
@@ -12,12 +15,11 @@ The SONG-China project data processing pipeline.
 
 - *extract.py* \
     ??
-- *master.py* \
-    master for song images
 - *song.py*\
     song image collection management
 - *thar.py*\
-    ThAr wavelength calibration module 
+    ThAr wavelength calibration module for SONG.
+    Loads templates.
 
 **twodspec**
 
@@ -27,13 +29,14 @@ The SONG-China project data processing pipeline.
     wavelength calibration module    
 - *ccd.py*\
     basic CCD operations
-- *config.py*\
-    configuration class
 - *extract.py*\
     spectral extraction module
-- *normalization.py*\
-    deprecated
 - *scatter.py*\
     scattered-light substraction module
 - *trace*\
     trace aperture
+
+
+## acknowledgements
+
+*SmoothingSpline* is from https://github.com/wafo-project/pywafo

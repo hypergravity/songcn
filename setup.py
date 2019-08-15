@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name='songcn',
-    version='0.0.4',
+    version='0.0.5',
     author='Bo Zhang',
     author_email='bozhang@nao.cas.cn',
     description='The SONG-China data processing pipeline.', # short description
@@ -25,7 +25,6 @@ setuptools.setup(
     # package_dir={'song': 'song',
     #              'twodspec': 'twodspec'}, commented because it's wrong
     package_data={"song": ['calibration/*',
-                           'calibration/thar_template/*',
                            'data/*'],
                   "": ["LICENSE"]
                   },
