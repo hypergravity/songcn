@@ -7,17 +7,14 @@ This package, **songcn**, is designed for the [**SONG-China**](http://song.bao.a
 The affliated **song** package is the SONG-China project data processing pipeline.
 The affliated **twodspec** is to provide basic operations for raw 2D spectral data.
 
-
 ## structures
 
 
 **song**
 
-- *extract.py* \
-    ??
-- *song.py*\
+- *song.py* \
     song image collection management
-- *thar.py*\
+- *thar.py* \
     ThAr wavelength calibration module for SONG.
     Loads templates.
 
@@ -25,15 +22,15 @@ The affliated **twodspec** is to provide basic operations for raw 2D spectral da
 
 - *aperture.py* \
     the aperture class
-- *calibration.py*\
+- *background.py* \
+    background modelling (scattered light substraction)
+- *calibration.py* \
     wavelength calibration module    
-- *ccd.py*\
+- *ccd.py* \
     basic CCD operations
-- *extract.py*\
+- *extract.py* \
     spectral extraction module
-- *scatter.py*\
-    scattered-light substraction module
-- *trace*\
+- *trace* \
     trace aperture
 
 
