@@ -224,6 +224,7 @@ class Song(Table):
                 assert np.sum(n_ap >= 50) > 0 and np.max(n_ap) < 52
             except AssertionError as ae:
                 print("@SONG: the n_ap: ", np.unique(n_ap))
+                print(n_ap)
                 raise (ae)
             sigma_best = sigmas[np.argmax(n_ap)]
             print("@SONG: best sigma: {:0.2f}".format(sigma_best))

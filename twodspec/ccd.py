@@ -133,16 +133,16 @@ class CCD(np.ndarray):
         ccds = [CCD.read(fp, hdu=hdu, gain=gain, ron=ron, unit=unit, trim=trim,
                          rot90=rot90) for fp in fps]
         if method == "median":
-            ccd_comb = CCD.median(ccds)
+            ccd_comb = CCD.median(ccds, axis=0)
         elif method == "mean":
-            ccd_comb = CCD.mean(ccds)
+            ccd_comb = CCD.mean(ccds, axis=0)
         else:
             raise ValueError("@CCD.combine: bad method [{}]".format(method))
 
         if not std:
             return ccd_comb
         else:
-            return ccd_comb, CCD.std(ccds)
+            return ccd_comb, CCD.std(ccds, axis=0)
 
 
     @staticmethod
