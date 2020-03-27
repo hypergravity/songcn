@@ -15,27 +15,34 @@ Created on
 
 Modifications
 -------------
--
+- Fri Mar 27 21:34:55 2020
 
 Aims
 ----
 - Song class
 
+Notes
+-----
+The SONG-China project defines file names with local time. i.e.,
+>>> import time
+>>> time.localtime()
+
 """
 
+import glob
 import os
 from collections import OrderedDict
 
 import numpy as np
 from astropy.io import fits
 from astropy.table import Table, Column
-from joblib import Parallel, delayed, dump, load
+from astropy.time import Time
+from joblib import Parallel, delayed, dump
 from matplotlib import pyplot as plt
 
 from twodspec import extract
 from twodspec.aperture import Aperture
 from twodspec.ccd import CCD
-from twodspec.deprecated import stella  # should be removed in future
 from . import __path__
 from . import thar
 from .utils import scan_files
@@ -73,21 +80,29 @@ class Song(Table):
     kwargs_read = dict(hdu=0, gain=1., ron=0., unit='adu', trim=None, rot90=0)
     # 2. combine images
     kwargs_combine = dict(method="median")
-    # 3. scattered-light background
+    # 3. scattered-light background for FLAT and STAR
     kwargs_background_flat = dict(q=(30, 1), kernel_size=(17, 17), sigma=(11, 7))
     kwargs_background_star = dict(q=(45, 45), kernel_size=(17, 17), sigma=(11, 7))
-
+    # 4. normalize FLAT
     kwargs_normflat = dict(max_dqe=0.04, min_snr=20, smooth_blaze=5,
                            n_chunks=8, ap_width=15, profile_oversample=10,
                            profile_smoothness=1e-2, num_sigma_clipping=20,
                            gain=1., ron=0)  # root directory
+    # 5. extract 1D spectrum
     kwargs_extract = dict(n_chunks=8, ap_width=15, profile_oversample=10,
                           profile_smoothness=1e-2, num_sigma_clipping=20,
                           gain=1., ron=0)
-    # dirpath = ""
+
     # data & work directory
-    dir_data = ""
-    dir_work = ""
+    rootdir = ""
+    rawdir = ""
+    extdir = ""
+    rawdir1 = ""
+    subdir = ""
+    datejd0 = 0
+    date = ""
+    jdnight = True
+    node = 2
 
     # unique slits
     unique_slits = []
@@ -117,56 +132,86 @@ class Song(Table):
         fits.getdata(__path__[0] + "/calibration/thar_template.fits", ext=3))
 
     def __init__(self, *args, **kwargs):
-        super(Song, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def new(self):
         """ initiate a new blank Song object """
-        s = self._init_from_dir(self.dir_data, self.dir_work, self.date,
-                                **self.kwargs_scan)
-        s.kwargs_scan = self.kwargs_scan
+        s = self.init(self.rootdir, self.date, self.jdnight, self.kwargs_scan["n_jobs"], self.kwargs_scan["verbose"], self.subdir, self.node)
         s.kwargs_read = self.kwargs_read
         s.kwargs_combine = self.kwargs_combine
         s.kwargs_background = self.kwargs_background
-
         return s
 
     @staticmethod
-    def _init_from_dir(dir_data, dir_work, date="", n_jobs=-1, verbose=True):
+    def init(rootdir="/Users/cham/projects/song/star_spec", date="20191030", jdnight=True,
+             n_jobs=-1, verbose=True, subdir="night", node=2):
         """ initiate from a directory path
 
         Parameters
         ----------
-        dir_data: string
-            data directory
-        dir_work: string
-            work directory
-        date:
+        rootdir: string
+            root directory of data
+        date: string
             optional
-        n_jobs=-1, verbose=True:
+        jdnight: bool
+            if True, use jd to define a night
+        n_jobs:
             joblib.Parallel arguments
+        verbose:
+            joblib.Parallel arguments
+        subdir:
+            night / day
+        node:
+            1: Spain, 2: China
 
         Returns
         -------
         Song object
         """
 
-        try:
-            assert os.path.exists(dir_data)
-        except AssertionError as ae:
-            print("@SONG: {} doesn't exist!")
-            raise (ae)
+        # directory path
+        datejd0 = date2jd0(date)
+        datedir = "{}/{}/{}".format(rootdir, date, subdir)
+        rawdir = "{}/{}/{}/raw".format(rootdir, date, subdir)
+        extdir = "{}/{}/{}/ext".format(rootdir, date, subdir)
+        rawdir1 = "{}/{}/{}/raw".format(rootdir, dateplus1(date), subdir)
 
+        # assert directories exist
+        assert os.path.exists(datedir)  # date dir
+        assert os.path.exists(rawdir)  # raw dir
+        # if jdnight:
+        #     assert os.path.exists(rawdir1)
         # if dir_work does not exist, make it
-        if not os.path.exists(dir_work):
-            os.mkdir(dir_work)
+        if not os.path.exists(extdir):
+            print("@SONG: making directory [{}]..".format(extdir))
+            os.mkdir(extdir)
 
+        # define a night, glob files
+        fps = glob.glob(rawdir + "/s{}_*.fits".format(node))
+        if jdnight:
+            fps.extend(glob.glob(rawdir1 + "/s{}_*.fits".format(node)))
+        fps = np.array(fps)
+        fps.sort()
+
+        # extract jd
+        if jdnight:
+            jds = np.array([fp2jd(fp) for fp in fps])
+            fps = fps[(jds >= datejd0) & (jds < datejd0 + 1)]
+
+        # scan files
         print("@SONG: scanning files ...")
-        s = Song(scan_files(dir_data, n_jobs=n_jobs, verbose=verbose))
+        s = Song(scan_files(fps, n_jobs=n_jobs, verbose=verbose))
 
-        s.dir_data = dir_data
-        s.dir_work = dir_work
+        # add info
+        s.rawdir = rawdir
+        s.rawdir1 = rawdir1
+        s.rootdir = rootdir
+        s.extdir = extdir
+        s.datejd0 = datejd0
         s.date = date
-
+        s.jdnight = jdnight
+        s.subdir = subdir
+        s.node = node
         s.kwargs_scan["n_jobs"] = n_jobs
         s.kwargs_scan["verbose"] = verbose
 
@@ -180,10 +225,10 @@ class Song(Table):
         self.master_bias, self.master_ron = self.ezmaster(
             {"IMAGETYP": "BIAS"}, n_select=120, method_select='all',
             method_combine='median', std=True)
-        """ write to disk """
-        self.master_bias_fp = "{}/masterbias_{}.fits".format(self.dir_work, self.date)
+        # write to disk
+        self.master_bias_fp = "{}/masterbias_{}.fits".format(self.extdir, self.date)
         self.master_bias.write(self.master_bias_fp, overwrite=True)
-        print("@SONG: combined bias written to *{}*".format(self.master_bias_fp))
+        print("@SONG: master bias written to *{}*".format(self.master_bias_fp))
         return
 
     def pipeline_flat(self, slits="all", n_jobs_trace=1, verbose=10):
@@ -225,7 +270,7 @@ class Song(Table):
             except AssertionError as ae:
                 print("@SONG: the n_ap: ", np.unique(n_ap))
                 print(n_ap)
-                raise (ae)
+                raise ae
             sigma_best = sigmas[np.argmax(n_ap)]
             print("@SONG: best sigma: {:0.2f}".format(sigma_best))
 
@@ -556,14 +601,14 @@ class Song(Table):
     # methods to summarize data
     # #################################### #
     def unique_config(self, cfgkeys=("SLIT", "IMAGETYP")):
-
+        """ find number of unique config """
         result = np.asarray(np.unique(self[cfgkeys]))
-        print("@SONG: {0} unique config found!".format(len(result)),
-              list(result))
+        print("@SONG: {0} unique config found!".format(len(result)), list(result))
+        self.describe().pprint()
         return result
 
     def describe(self, cfgkeys=("SLIT", "IMAGETYP")):
-        """
+        """ generate a table of stats on image configs
 
         Parameters
         ----------
@@ -590,7 +635,6 @@ class Song(Table):
 
         return result
 
-    # TODO: to add more info in summary
     @property
     def summary(self, colname_imagetype="IMAGETYP", return_data=False):
         """
@@ -613,7 +657,7 @@ class Song(Table):
                                         return_inverse=True)
         # print summary information
         print("=====================================================")
-        print("[SUMMARY] {:s}".format(self.dirpath))
+        print("[SUMMARY] {:s}".format(self.extdir))
         print("=====================================================")
         for i in range(len(u)):
             print("{:10s} {:d}".format(u[i], ucts[i]))
@@ -678,48 +722,39 @@ class Song(Table):
         dump(self, fp)
         return
 
-    def draw(self, save=None, figsize=(20, 10), return_fig=False):
+    def draw(self, save=None, figsize=(15, 6), return_fig=False):
         """ a description of observation """
+        ljd = self["JD-MID"] + 8 / 24
+        # lhour = (np.mod(ljd, 1) + 0.5) * 24
 
         fig = plt.figure(figsize=figsize)
         ax = fig.add_subplot(111)
 
-        ind = self["IMAGETYP"] == "BIAS"
-        ax.plot(self["MJD-MID"][ind], self["SLIT"][ind], "o", mfc="none", mec='g',
-                ms=20, label="BIAS")
-
-        ind = self["IMAGETYP"] == "FLAT"
-        ax.plot(self["MJD-MID"][ind], self["SLIT"][ind], "^", mfc="none", mec='r',
-                ms=20, label="FLAT")
-
-        ind = self["IMAGETYP"] == "FLATI2"
-        ax.plot(self["MJD-MID"][ind], self["SLIT"][ind], "^", mfc="none", mec='b',
-                ms=20, label="FLATI2")
-
-        ind = self["IMAGETYP"] == "THAR"
-        ax.plot(self["MJD-MID"][ind], self["SLIT"][ind], "D", mfc="none", mec='c',
-                ms=20, mew=2, label="THAR")
-
-        ind = self["IMAGETYP"] == "STAR"
-        ax.plot(self["MJD-MID"][ind], self["SLIT"][ind], "s", mfc="none", mec='m',
-                ms=20, label="STAR")
-
-        ind = self["IMAGETYP"] == "STARI2"
-        ax.plot(self["MJD-MID"][ind], self["SLIT"][ind], "s", mfc="none", mec='y',
-                ms=20, label="STARI2")
-
-        ind = self["IMAGETYP"] == "TEST"
-        ax.plot(self["MJD-MID"][ind], self["SLIT"][ind], "s", mfc="none", mec='gray',
-                ms=20, label="TEST")
-
-        # sub table for texting
-        tsub = self["MJD-MID", "SLIT", "IMAGETYP", "OBJECT"]
-        tsub.sort("MJD-MID")
+        # sub table for text
+        tsub = self["JD-MID", "SLIT", "IMAGETYP", "OBJECT"]
+        # tsub["JD-MID"] = lhour
+        tsub.sort("JD-MID")
         trep = find_all_repeats(tsub)
 
+        _ms = 15
+        ind = self["IMAGETYP"] == "BIAS"
+        ax.plot(tsub["JD-MID"][ind], tsub["SLIT"][ind], "o", mfc="none", mec='g', ms=_ms, label="BIAS")
+        ind = self["IMAGETYP"] == "FLAT"
+        ax.plot(tsub["JD-MID"][ind], tsub["SLIT"][ind], "^", mfc="none", mec='r', ms=_ms, label="FLAT")
+        ind = self["IMAGETYP"] == "FLATI2"
+        ax.plot(tsub["JD-MID"][ind], tsub["SLIT"][ind], "^", mfc="none", mec='b', ms=_ms, label="FLATI2")
+        ind = self["IMAGETYP"] == "THAR"
+        ax.plot(tsub["JD-MID"][ind], tsub["SLIT"][ind], "D", mfc="none", mec='c', ms=_ms, mew=2, label="THAR")
+        ind = self["IMAGETYP"] == "STAR"
+        ax.plot(tsub["JD-MID"][ind], tsub["SLIT"][ind], "s", mfc="none", mec='m', ms=_ms, label="STAR")
+        ind = self["IMAGETYP"] == "STARI2"
+        ax.plot(tsub["JD-MID"][ind], tsub["SLIT"][ind], "s", mfc="none", mec='y', ms=_ms, label="STARI2")
+        ind = self["IMAGETYP"] == "TEST"
+        ax.plot(tsub["JD-MID"][ind], tsub["SLIT"][ind], "s", mfc="none", mec='gray', ms=_ms, label="TEST")
+
+        #
         for i in range(len(trep)):
-            if trep['label'][i] not in \
-                    ["BIAS", "FLAT", "FLATI2", "THAR", "THARI2"]:
+            if trep['label'][i] not in ["BIAS", "FLAT", "FLATI2", "THAR", "THARI2"]:
                 fontcolor = "r"
             else:
                 fontcolor = (0, 0, 0, .8)
@@ -736,46 +771,35 @@ class Song(Table):
                                    fontsize=12, color=fontcolor)
 
             if trep['c'][i] > 1:
-                tick_x = [trep["mjd1"][i], trep["mjd1"][i], trep["mjd2"][i],
-                          trep["mjd2"][i]]
-                tick_y = [trep["slit"][i], trep["slit"][i] + tick_height,
-                          trep["slit"][i] + tick_height, trep["slit"][i]]
+                tick_x = [trep["jd1"][i], trep["jd1"][i], trep["jd2"][i], trep["jd2"][i]]
+                tick_y = [trep["slit"][i], trep["slit"][i] + tick_height, trep["slit"][i] + tick_height, trep["slit"][i]]
                 ax.plot(tick_x, tick_y, 'k')
-                ax.text(trep["mjd1"][i] * .5 + trep["mjd2"][i] * .5,
-                        trep["slit"][i] + tick_height,
-                        trep['label'][i] + " x {}".format(trep['c'][i]),
-                        **text_kwargs)
+                ax.text(trep["jd1"][i] * .5 + trep["jd2"][i] * .5, trep["slit"][i] + tick_height,
+                        trep['label'][i] + " x {}".format(trep['c'][i]), **text_kwargs)
             else:
-                tick_x = [trep["mjd1"][i], trep["mjd1"][i]]
+                tick_x = [trep["jd1"][i], trep["jd1"][i]]
                 tick_y = [trep["slit"][i], trep["slit"][i] + tick_height]
                 ax.plot(tick_x, tick_y, 'k')
-                ax.text(trep["mjd1"][i], trep["slit"][i] + tick_height,
-                        trep['label'][i] + " x {}".format(trep['c'][i]),
-                        **text_kwargs)
+                ax.text(trep["jd1"][i], trep["slit"][i] + tick_height,
+                        trep['label'][i] + " x {}".format(trep['c'][i]), **text_kwargs)
 
         ax.legend(loc=3)
-        ax.set_xlabel("MJD-MID")
-        ax.set_ylabel("#SLIT")
+        ax.set_xlabel("Julian Day")
+        ax.set_ylabel("Slit Number")
         ax.set_yticks(np.arange(9) + 1)
-        ax.set_ylim(-.5, 10.5)
-
-        mjd_min = np.floor(tsub['MJD-MID'].min())
-        mjd_max = np.ceil(tsub['MJD-MID'].max())
-        nmjd = np.int(np.round(mjd_max - mjd_min))
-        ax.set_xlim(mjd_min, mjd_max)
+        _ylim = self["SLIT"].min() - 2, self["SLIT"].max() + 2
+        ax.set_ylim(_ylim)
+        ax.set_xticks(np.linspace(self.datejd0 - 8 / 24, self.datejd0 - 8 / 24 + 1, 13))
+        ax.set_xlim(self.datejd0 - 8 / 24, self.datejd0 - 8 / 24 + 1)
         ax.grid(True, axis="y", ydata=np.arange(11))
 
-        xlim1 = ax.get_xlim()
         ax2 = ax.twiny()
-        ax2.set_xlabel("BJ Time")
-        ax2.set_xlim(xlim1)
-        ax2.set_xticks(mjd_min + np.linspace(0, nmjd, 24 * nmjd + 1))
-        ax2.set_xticklabels(np.hstack((np.roll(np.arange(24), 12).reshape(
-            -1, 1).repeat(nmjd, axis=1).T.flatten(), 12)))
+        ax2.set_xlabel("Beijing local time (UTC+8 Hour)")
+        ax2.set_xticks(np.linspace(12, 36, 13))
+        ax2.set_xticklabels(["{:.0f}".format(_) for _ in np.mod(np.linspace(12, 36, 13), 24)])
+        ax2.set_xlim(12, 36)
         ax2.grid(True, axis='x', linestyle='--')
 
-        ax.set_xlim(tsub['MJD-MID'].min() - .1, tsub['MJD-MID'].max() + .1)
-        ax2.set_xlim(tsub['MJD-MID'].min() - .1, tsub['MJD-MID'].max() + .1)
         fig.tight_layout()
 
         if save is not None:
@@ -897,7 +921,7 @@ class Song(Table):
 
         h0 = fits.hdu.PrimaryHDU(data, fits.Header(im_meta))
         hl = fits.HDUList([h0])
-        hl.writeto(self.dir_work + "pstar{}_{:s}".format(slit, star_fn),
+        hl.writeto(self.extdir + "pstar{}_{:s}".format(slit, star_fn),
                    overwrite=True)
 
         return star_fn
@@ -920,30 +944,24 @@ def find_repeats(tsub, i1=0):
             c += 1
         else:
             break
-
     if tsub["IMAGETYP"][i1] in ["BIAS", "FLAT", "FLATI2", "THAR", "THARI2"]:
         this_label = tsub["IMAGETYP"][i1]
     else:
         this_label = tsub["OBJECT"][i1]
-    this_mjd1 = tsub["MJD-MID"][i1]
-    this_mjd2 = tsub["MJD-MID"][i1 + c - 1]
+    this_mjd1 = tsub["JD-MID"][i1]
+    this_mjd2 = tsub["JD-MID"][i1 + c - 1]
     this_slit = tsub["SLIT"][i1]
-
     return this_mjd1, this_mjd2, this_slit, this_label, c
 
 
-# used in draw()
 def find_all_repeats(tsub):
     repeats = []
-
     i1 = 0
     while i1 < len(tsub):
         repeats.append(find_repeats(tsub, i1))
         i1 += repeats[-1][-1]
-
-    from astropy.table import Table
     return Table(np.array(repeats),
-                 names=["mjd1", "mjd2", "slit", "label", "c"],
+                 names=["jd1", "jd2", "slit", "label", "c"],
                  dtype=[float, float, int, str, int])
 
 
@@ -1051,3 +1069,27 @@ def combine_images(fps, method="median", std=False,
     else:
         ccd_std = CCD.std(ccds)
         return ccd_comb, ccd_std
+
+
+# convert date string
+# print(date2jd0("20191031"))
+def date2jd0(s="20191031"):
+    ds = "{}-{}-{}T12:00:00".format(s[0:4],s[4:6],s[6:8])
+    return Time(ds,format="isot").jd
+
+
+# print(jd02date(2458788.0+1))
+def jd02date(jd):
+    ds = Time(jd,format="jd").isot
+    return ds[:10].replace("-", "")
+
+
+# print(dateplus1("20191031"))
+def dateplus1(s="20191031"):
+    return jd02date(date2jd0(s)+1)
+
+
+def fp2jd(fp="s2_2019-10-30T19-56-00.fits"):
+    fn = os.path.basename(fp)
+    dtisot = "{}:{}:{}".format(fn[3:16], fn[17:19], fn[20:22])
+    return Time(dtisot, format="isot").jd
