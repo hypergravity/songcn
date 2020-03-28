@@ -17,6 +17,10 @@ class CCD(np.ndarray):
     https://docs.scipy.org/doc/numpy/user/basics.subclassing.html
     https://docs.scipy.org/doc/numpy/reference/arrays.classes.html
 
+    Updates
+    -------
+    remove mean, median and std methods.
+
     """
 
     # ccd info
@@ -62,7 +66,7 @@ class CCD(np.ndarray):
 
         Usage:
         ------
-        ccd.info
+        CCD.info
 
         """
         s = ("< twodspec.ccd.CCD instance {} x {} >\n"
@@ -81,7 +85,7 @@ class CCD(np.ndarray):
     ###########################
     # to inherit numpy.ndarray
     ###########################
-    def __new__(subtype, data, gain=1., ron=0., unit="adu",
+    def __new__(cls, data, gain=1., ron=0., unit="adu",
                 trim=None, rot90=0, header=None, meta=None,
                 offset=0, strides=None, order="C", info=None):
         # Create the ndarray instance of our type, given the usual
@@ -92,19 +96,16 @@ class CCD(np.ndarray):
         data = np.array(data, dtype=np.float, order=order)
 
         # substantiate
-        ccd = super(CCD, subtype).__new__(subtype, shape=data.shape,
-                                          dtype=data.dtype, buffer=data,
-                                          offset=offset, strides=strides,
-                                          order=order)
-
+        ccd = super(CCD, cls).__new__(cls, shape=data.shape,
+                                      dtype=data.dtype, buffer=data,
+                                      offset=offset, strides=strides,
+                                      order=order)
         # set info
         ccd.gain = gain
         ccd.ron = ron
         ccd.unit = unit
-
         ccd._trim = trim
         ccd._rot90 = rot90
-
         ccd.header = header
         if header is None:
             ccd.meta = OrderedDict()
@@ -130,20 +131,18 @@ class CCD(np.ndarray):
     @staticmethod
     def reads(fps=["",], method="median", std=False,
               hdu=0, gain=1., ron=0., unit="adu", trim=None, rot90=0):
-        ccds = [CCD.read(fp, hdu=hdu, gain=gain, ron=ron, unit=unit, trim=trim,
-                         rot90=rot90) for fp in fps]
+        ccds = CCD([CCD.read(fp, hdu=hdu, gain=gain, ron=ron, unit=unit, trim=trim, rot90=rot90) for fp in fps])
         if method == "median":
-            ccd_comb = CCD.median(ccds, axis=0)
+            ccd_comb = np.median(ccds, axis=0)
         elif method == "mean":
-            ccd_comb = CCD.mean(ccds, axis=0)
+            ccd_comb = np.mean(ccds, axis=0)
         else:
             raise ValueError("@CCD.combine: bad method [{}]".format(method))
 
         if not std:
             return ccd_comb
         else:
-            return ccd_comb, CCD.std(ccds, axis=0)
-
+            return ccd_comb, np.std(ccds, axis=0)
 
     @staticmethod
     def read(fp="", hdu=0, gain=1., ron=0., unit="adu", trim=None, rot90=0):
@@ -174,7 +173,7 @@ class CCD(np.ndarray):
         else:
             raise ValueError("@CCD.read(): file not found! [{}]".format(fp))
     
-    def trim(self, trim=(0, 2047, 0, 2047)):
+    def trim(self, trim=(0, 2048, 0, 2048)):
         """ trim CCD data
 
         Parameters
@@ -183,7 +182,7 @@ class CCD(np.ndarray):
             the trimed section
         """
         l, r, t, b = trim
-        trimed_data = self[l:r+1, t:b+1]
+        trimed_data = self[l:r, t:b]
         trimed_data.copy_info(self)
         return trimed_data
 
@@ -207,8 +206,8 @@ class CCD(np.ndarray):
         for k in self.extr_attr_list:
             self.__setattr__(k, ccd1.__getattribute__(k))
 
-    def copy(self):
-        return np.copy(self)
+    # def copy(self):
+    #     return np.copy(self)
 
     ###########################
     # get config
@@ -222,49 +221,49 @@ class CCD(np.ndarray):
                     trim=self._trim,
                     rot90=self._rot90)
 
-    ###########################
-    # arithmetic options
-    ###########################
-    def subtract(self, ccd1):
-        """ ccd2 = self - ccd1 """
-        ccd2 = self/ccd1
-        ccd2.copy_info(self)
-        return ccd2
-
-    def devide(self, ccd1):
-        """ ccd2 = self / ccd1 """
-        ccd2 = self / ccd1
-        ccd2.copy_info(self)
-        return ccd2
-
-    @staticmethod
-    def combine(ccds, method="median"):
-        """ combine ccd frames """
-        ccds = CCD(ccds)
-        if method == "median":
-            return np.median(ccds, axis=0)
-        elif method == "mean":
-            return np.mean(ccds, axis=0)
-        else:
-            raise ValueError("@CCD.combine: bad method [{}]".format(method))
-
-    def mean(self, axis=None):
-        return CCD(np.mean(self, axis=axis))
-
-    def median(self, axis=None):
-        return CCD(np.median(self, axis=axis))
-
-    def std(self, axis=None):
-        return CCD(np.std(self, axis=axis))
-
     def write(self, fp, overwrite=True):
         phdu = fits.PrimaryHDU(data=self, header=fits.Header(self.meta))
         phdu.writeto(fp, overwrite=overwrite)
         return
 
+    ###########################
+    # arithmetic options
+    ###########################
+    # def subtract(self, ccd1):
+    #     """ ccd2 = self - ccd1 """
+    #     ccd2 = self/ccd1
+    #     ccd2.copy_info(self)
+    #     return ccd2
+    #
+    # def devide(self, ccd1):
+    #     """ ccd2 = self / ccd1 """
+    #     ccd2 = self / ccd1
+    #     ccd2.copy_info(self)
+    #     return ccd2
+
+    # @staticmethod
+    # def combine(ccds, method="median"):
+    #     """ combine ccd frames """
+    #     ccds = CCD(ccds)
+    #     if method == "median":
+    #         return np.median(ccds, axis=0)
+    #     elif method == "mean":
+    #         return np.mean(ccds, axis=0)
+    #     else:
+    #         raise ValueError("@CCD.combine: bad method [{}]".format(method))
+
+    # def mean(self, axis=None):
+    #     return CCD(np.mean(self, axis=axis))
+    #
+    # def median(self, axis=None):
+    #     return CCD(np.median(self, axis=axis))
+    #
+    # def std(self, axis=None):
+    #     return CCD(np.std(self, axis=axis))
+
 
 def test2():
-    fp = "/home/cham/PycharmProjects/songcn/twodspec/data/s2_2017-01-13T16-43-05.fits"
+    fp = os.getenv("HOME") + "/PycharmProjects/songcn/twodspec/data/s2_2017-01-13T16-43-05.fits"
     # check image --> consistent with fits.getdata & ccdproc.CCDData.read
     print("---")
     data = fits.getdata(fp)
@@ -283,7 +282,7 @@ def test2():
 
 
 def test1():
-    fp = "/home/cham/PycharmProjects/songcn/twodspec/data/s2_2017-01-13T16-43-05.fits"
+    fp = os.getenv("HOME") + "/PycharmProjects/songcn/twodspec/data/s2_2017-01-13T16-43-05.fits"
     ccd = CCD.read(fp, rot90=0, gain=5)
     print(ccd)
 
@@ -296,6 +295,5 @@ def test1():
 
 
 if __name__ == "__main__":
-
     test1()
     test2()
