@@ -743,7 +743,7 @@ class Song(Table):
         ind = self["IMAGETYP"] == "TEST"
         ax.plot(tsub["JD-MID"][ind], tsub["SLIT"][ind], "s", mfc="none", mec='gray', ms=_ms, label="TEST")
 
-        #
+        # annotate the repeats
         for i in range(len(trep)):
             if trep['label'][i] not in ["BIAS", "FLAT", "FLATI2", "THAR", "THARI2"]:
                 fontcolor = "r"
@@ -785,16 +785,24 @@ class Song(Table):
         ax.grid(True, axis="y", ydata=np.arange(11))
 
         ax2 = ax.twiny()
-        ax2.set_xlabel("Beijing local time (UTC+8 Hour)")
-        ax2.set_xticks(np.linspace(12, 36, 13))
+        ax2.set_xlabel("{}-{}-{} Beijing local time (UTC+8 Hour)".format(self.date[:4], self.date[4:6], self.date[6:8]))
+        ax2.set_xticks(np.linspace(12, 36, 13), minor=True)
         ax2.set_xticklabels(["{:.0f}".format(_) for _ in np.mod(np.linspace(12, 36, 13), 24)])
         ax2.set_xlim(12, 36)
         ax2.grid(True, axis='x', linestyle='--')
 
         fig.tight_layout()
 
-        if save is not None:
+        if save is True:
+            # save to default
+            figpath = self.extdir+"/summary_{}".format(self.date)
+            print("@SONG: saving summary figure to {}".format(figpath))
+            fig.savefig(figpath)
+        elif save is not None:
+            figpath = save
+            print("@SONG: saving summary figure to {}".format(figpath))
             fig.savefig(save)
+
         if return_fig:
             return fig
         else:
