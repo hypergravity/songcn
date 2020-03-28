@@ -703,9 +703,8 @@ class Song(Table):
         try:
             for k in cond_dict.keys():
                 assert k in self.colnames
-        except:
-            print("@SONG: key not found: {0}".format(k))
-            raise(ValueError())
+        except Exception:
+            raise ValueError("@SONG: key not found: {0}".format(k))
 
         # find fps of matched images
         fps = self.select(cond_dict, method=method_select, n_select=n_select)
@@ -713,14 +712,6 @@ class Song(Table):
 
         # combine all selected images
         return self.reads(fps, method=method_combine, std=std)
-
-    # #################################### #
-    # save & dump method
-    # #################################### #
-    def dump(self, fp):
-        print("@SONG: save to {0} ...".format(fp))
-        dump(self, fp)
-        return
 
     def draw(self, save=None, figsize=(15, 6), return_fig=False):
         """ a description of observation """
