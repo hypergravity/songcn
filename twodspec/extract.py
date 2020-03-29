@@ -1,5 +1,5 @@
 import numpy as np
-from twodspec.extern.interpolate import SmoothSpline
+from laspec.extern.interpolate import SmoothSpline
 from scipy.interpolate import interp1d
 from scipy.stats import binned_statistic
 
