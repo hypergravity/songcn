@@ -23,12 +23,18 @@ Aims
 
 """
 
+import os
+
 import numpy as np
+from astropy.io import fits
+from matplotlib import pyplot as plt
+from scipy import signal
 from skimage import feature
 
 
-def trace_canny(flat, details=False, *args, **kwargs):
-    """
+# not used ??
+def trace_canny_row(flat, details=False, *args, **kwargs):
+    """ trace apertures using canny edge method in skimage for row apertures
 
     Parameters
     ----------
@@ -152,7 +158,7 @@ def trace_canny(flat, details=False, *args, **kwargs):
 
 
 def trace_canny_col(flat, details=False, verbose=True, *args, **kwargs):
-    """
+    """ trace apertures using canny method in skimage for column apertures
 
     Parameters
     ----------
@@ -277,3 +283,185 @@ def trace_canny_col(flat, details=False, verbose=True, *args, **kwargs):
             isadopted=isadopted,
         )
         return results, details
+
+
+def gaussian_kernel(sigma=2., n_sigma=5):
+    """ generate Gaussian kernel
+
+    Parameters
+    ----------
+    sigma : float, optional
+        The sigma of the Gaussian. The default is 2..
+    n_sigma : flaot, optional
+        The width of the Gaussian in terms of sigma. The default is 5.
+
+    Returns
+    -------
+    y : ndarray
+        The Gaussian kernel array.
+
+    """
+    npix = np.int(n_sigma * sigma) + 1
+    x = np.arange(-npix, npix + 1, 1)
+    y = np.exp(-0.5 * (x / sigma) ** 2)
+    y /= np.sum(y)
+    return y
+
+
+# not used
+def box_kernel(fullwidth=10):
+    npix = np.int(fullwidth)
+    kernel = np.ones(npix)
+    kernel /= np.sum(kernel)
+    return kernel
+
+
+def trace_naive_max(flat, sigma=7., maxdev=0):
+    """ trace aperture using naive method -- along local max
+
+    Parameters
+    ----------
+    flat : ndarray
+        FLAT.
+    sigma : float, optional
+        The sigma of Gaussian kernel. The default is 7.
+    maxdev : float, optional
+        The max deviation of local max while tracing. The default is 0.
+
+    Returns
+    -------
+    ap_center : ndarray (n_ap, n_pix)
+        The array for center of aperture.
+
+    """
+    flat = np.asarray(flat, float)
+    n_row, n_col = flat.shape
+    i_row_center = np.int(n_row / 2)
+
+    # smooth flat along spacial axis
+    flat_smooth = np.zeros_like(flat)
+    gkernel = gaussian_kernel(sigma)
+    for i_row in range(n_row):
+        flat_smooth[i_row] = signal.fftconvolve(flat[i_row], gkernel, mode="same")
+
+    # find local max
+    flat_smooth_diff = np.diff(flat_smooth, axis=1)
+    flat_localmax = np.zeros_like(flat, bool)
+    flat_localmax[:, 1:-1] = (flat_smooth_diff[:, 1:] < 0) & (flat_smooth_diff[:, :-1] > 0)
+
+    # start from center row
+    ind_col_localmax, = np.where(flat_localmax[i_row_center])
+    n_ap_try = len(ind_col_localmax)
+    ap_center_try = np.ones((n_ap_try, n_row)) * np.nan
+    ap_center_try[:, i_row_center] = ind_col_localmax
+
+    # find local max col each row
+    each_row_localmax = [np.where(flat_localmax[i_row])[0] for i_row in range(n_row)]
+
+    # loop for trials
+    if maxdev <= 0 or maxdev is None:
+        maxdev = sigma
+    for i_ap in range(n_ap_try):
+        for i_row in range(i_row_center - 1, 0 - 1, -1):
+            this_d = np.abs(each_row_localmax[i_row] - ap_center_try[i_ap, i_row + 1])
+            if np.min(this_d) <= maxdev:
+                ap_center_try[i_ap, i_row] = each_row_localmax[i_row][np.argmin(this_d)]
+            else:
+                break
+        for i_row in range(i_row_center + 1, n_row, 1):
+            this_d = np.abs(each_row_localmax[i_row] - ap_center_try[i_ap, i_row - 1])
+            if np.min(this_d) <= maxdev:
+                ap_center_try[i_ap, i_row] = each_row_localmax[i_row][np.argmin(this_d)]
+            else:
+                break
+    ind_good_ap = np.sum(np.isfinite(ap_center_try), axis=1) == n_row
+    n_ap = np.sum(ind_good_ap)
+    ap_center = ap_center_try[ind_good_ap]
+
+    return ap_center
+
+
+def trace_naive_min(flat, sigma=7., maxdev=0):
+    """ trace aperture using naive method -- along local min
+
+    Parameters
+    ----------
+    flat : ndarray
+        FLAT.
+    sigma : float, optional
+        The sigma of Gaussian kernel. The default is 7.
+    maxdev : float, optional
+        The max deviation of local max while tracing. The default is 0.
+
+    Returns
+    -------
+    ap_center : ndarray (n_ap, n_pix)
+        The array for center of aperture..
+
+    """
+    flat = np.asarray(flat, float)
+    n_row, n_col = flat.shape
+    i_row_center = np.int(n_row / 2)
+
+    # smooth flat
+    flat_smooth = np.zeros_like(flat)
+    gkernel = gaussian_kernel(sigma)
+    for i_row in range(n_row):
+        flat_smooth[i_row] = signal.fftconvolve(flat[i_row], gkernel, mode="same")
+
+    # find local max
+    flat_smooth_diff = np.diff(flat_smooth, axis=1)
+    flat_localmax = np.zeros_like(flat, bool)
+    flat_localmax[:, 1:-1] = (flat_smooth_diff[:, 1:] > 0) & (flat_smooth_diff[:, :-1] < 0)
+
+    # start from center row
+    ind_col_localmax, = np.where(flat_localmax[i_row_center])
+    n_ap_try = len(ind_col_localmax)
+    ap_center_try = np.ones((n_ap_try, n_row)) * np.nan
+    ap_center_try[:, i_row_center] = ind_col_localmax
+
+    # each row local max col
+    each_row_localmax = [np.where(flat_localmax[i_row])[0] for i_row in range(n_row)]
+
+    # loop for trials
+    if maxdev <= 0 or maxdev is None:
+        maxdev = sigma
+    for i_ap in range(n_ap_try):
+        for i_row in range(i_row_center - 1, 0 - 1, -1):
+            this_d = np.abs(each_row_localmax[i_row] - ap_center_try[i_ap, i_row + 1])
+            if np.min(this_d) <= maxdev:
+                ap_center_try[i_ap, i_row] = each_row_localmax[i_row][np.argmin(this_d)]
+            else:
+                break
+        for i_row in range(i_row_center + 1, n_row, 1):
+            this_d = np.abs(each_row_localmax[i_row] - ap_center_try[i_ap, i_row - 1])
+            if np.min(this_d) <= maxdev:
+                ap_center_try[i_ap, i_row] = each_row_localmax[i_row][np.argmin(this_d)]
+            else:
+                break
+    ind_good_ap = np.sum(np.isfinite(ap_center_try), axis=1) == n_row
+    # n_ap = np.sum(ind_good_ap)
+    ap_center = ap_center_try[ind_good_ap]
+
+    return ap_center
+
+
+def test_trace_naive_max():
+    plt.rcParams.update({"font.size": 15})
+    flat = fits.getdata("/Users/cham/projects/song/star_spec/20191105/night/ext/masterflat_20191105_slit5.fits")
+    ap_center = trace_naive_max(flat, sigma=7, maxdev=10)
+    fig = plt.figure(figsize=(8,6))
+    plt.plot(ap_center.T, np.arange(2048), "-", c="w",label="apertures",lw=1)
+    plt.imshow(np.log10(flat),cmap=plt.cm.jet)
+    # plt.set_xticks(np.linspace(0,2047,))
+    plt.colorbar()
+    plt.xlabel("CCD X coordinate")
+    plt.ylabel("CCD Y coordinate")
+    fig.tight_layout()
+    # fig.savefig(os.getenv("HOME")+"/PycharmProjects/songcn/figs/test_trace_naive_max.pdf")
+    print(ap_center.shape)
+    return
+
+
+if __name__ == "__main__":
+    test_trace_naive_max()
