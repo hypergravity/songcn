@@ -1,7 +1,7 @@
 """
 This is a collection of deprecated modules.
 
-- *aperture_old.py* \
+- *aperture_20170523.py* \
     old aperture tracing methods
 
 - *aprec.py*\
