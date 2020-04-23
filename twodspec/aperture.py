@@ -23,18 +23,12 @@ Aims
 
 """
 
-import warnings
-from copy import copy
-
 import numpy as np
-from scipy.interpolate import interp1d
-from scipy.optimize import leastsq
-from scipy.signal import medfilt2d, medfilt
-from scipy.stats import binned_statistic
 
 from .background import apbackground
+from .extract import (get_aperture_section, extract_profile, extract_aperture, extract_all,
+                      make_normflat, extract_profile_simple)
 from .trace import trace_canny_col, trace_naive_max
-from .deprecated.aprec import AprecList, Aprec  # deprecated IRAF interface
 
 
 # ###################################################### #
@@ -108,6 +102,7 @@ class Aperture(object):
         if ap_center is not None:
             self.ap_lower = ap_center - ap_width
             self.ap_upper = ap_center + ap_width
+        self.ap_width = ap_width
         return
 
     @staticmethod
@@ -239,13 +234,177 @@ class Aperture(object):
 
     def background(self, im, npix_inter=5, q=(40, 5), sigma=(10, 10), kernel_size=(11, 11)):
         """ newly developed on 2017-05-28, with best performance """
-        return apbackground(im, self.ap_center, q=q,
-                            npix_inter=npix_inter, sigma=sigma,
-                            kernel_size=kernel_size)
+        return apbackground(im, self.ap_center, q=q, npix_inter=npix_inter, 
+                            sigma=sigma, kernel_size=kernel_size)
+    
+    def get_aperture_section(self, im, iap):
+        """ get an aperture section
+
+        Parameters
+        ----------
+        im : ndarray
+            The target image.
+        iap : int
+            The aperture index.
+
+        Returns
+        -------
+        ap_im : ndarray
+            DESCRIPTION.
+        ap_im_xx : ndarray
+            x coordinates.
+        ap_im_yy : ndarray
+            y coordinates.
+        ap_im_xx_cor : ndarray
+            x offset from center.
+
+        """
+        return get_aperture_section(im, self.ap_center_interp[iap], ap_width=self.ap_width)
+
+    def extract_profile_simple(self, ap_im, ap_im_xx_cor, profile_oversample=10, profile_smoothness=1e-1):
+
+        return extract_profile_simple(ap_im, ap_im_xx_cor, self.ap_width,
+                                      profile_oversample=profile_oversample,
+                                      profile_smoothness=profile_smoothness)
+
+    def extract_profile(self, ap_im, ap_im_xx_cor, profile_smoothness=1e-2, n_chunks=8,
+                        ap_width=15., profile_oversample=10., ndev=4):
+        return extract_profile(ap_im, ap_im_xx_cor, profile_smoothness=profile_smoothness, n_chunks=n_chunks,
+                               ap_width=ap_width, profile_oversample=profile_oversample, ndev=ndev)
+
+    def make_normflat(self, im, max_dqe=0.04, min_snr=20, smooth_blaze=5, n_chunks=8,
+                      profile_oversample=10, profile_smoothness=1e-2, num_sigma_clipping=20, gain=1., ron=0, n_jobs=1):
+        """ normalize FLAT
+        
+        Parameters
+        ----------
+        im : ndarray
+            the target image.
+        max_dqe : float, optional
+            The max deviation of Quantum Efficiency from 1.0. The default is 0.04.
+        min_snr : flaot, optional
+            Ignore the region with snr<min_snr. The default is 20.
+        smooth_blaze : int, optional
+            The smooth kernel width / pixel. The default is 5.
+        n_chunks : int, optional
+            Split each aperture to n_chunks chunks. The default is 8.
+        profile_oversample : int, optional
+            Oversampling factor of spatial profile. The default is 10.
+        profile_smoothness : float, optional
+            The smoothness of the profile. The default is 1e-2.
+        num_sigma_clipping : float, optional
+            The sigma-clipping value / sigma. The default is 20.
+        gain : flaot, optional
+            The gain of the image. The default is 1..
+        ron : float, optional
+            The readout noise. The default is 0.
+        n_jobs : int, optional
+            The number of processes launched. The default is 1.
+
+        Returns
+        -------
+        blaze, im_norm : ndarray
+            The blaze functions and sensitivity image.
+
+        """
+        blaze, im_norm = make_normflat(
+            im, self, max_dqe=max_dqe, min_snr=min_snr, smooth_blaze=smooth_blaze, n_chunks=n_chunks,
+            profile_oversample=profile_oversample, profile_smoothness=profile_smoothness,
+            num_sigma_clipping=num_sigma_clipping, gain=gain, ron=ron, n_jobs=n_jobs)
+        return blaze, im_norm
+
+    def extract_all(self, im, n_chunks=8, profile_oversample=10, profile_smoothness=1e-2,
+                    num_sigma_clipping=10, gain=1., ron=0, n_jobs=-1):
+        """ extract all apertures with both simple & profile extraction
+
+        Parameters
+        ----------
+        im : ndarray
+            The target image.
+        n_chunks : int, optional
+            The number of chunks. The default is 8.
+        profile_oversample : int, optional
+            The oversampling factor of the profile. The default is 10.
+        profile_smoothness : float, optional
+            The smoothness of the profile. The default is 1e-2.
+        num_sigma_clipping : float, optional
+            The sigma clipping threshold. The default is 5..
+        gain : float, optional
+            The gain of CCD. The default is 1..
+        ron : flaot, optional
+            The readout noise of CCD. The default is 0.
+        n_jobs : int, optional
+            The number of processes launched. The default is -1.
+
+        Returns
+        -------
+        dict
+            a dict sconsisting of many results.
+
+        """
+
+        return extract_all(im, self, n_chunks=8, profile_oversample=10, profile_smoothness=1e-2,
+                           num_sigma_clipping=10, gain=1., ron=0, n_jobs=n_jobs)
+
+    def extract_aperture(self, iap, im, n_chunks=8, profile_oversample=10, profile_smoothness=1e-2,
+                         num_sigma_clipping=5., gain=1., ron=0):
+        """ Extract one aperture
+
+        Parameters
+        ----------
+        iap : int
+            Extract the iap th aperture.
+        im : ndarray
+            The target image.
+        n_chunks : int, optional
+            The number of chunks. The default is 8.
+        profile_oversample : int, optional
+            The oversampling factor of the profile. The default is 10.
+        profile_smoothness : float, optional
+            The smoothness of the profile. The default is 1e-2.
+        num_sigma_clipping : float, optional
+            The sigma clipping threshold. The default is 5..
+        gain : float, optional
+            The gain of CCD. The default is 1..
+        ron : flaot, optional
+            The readout noise of CCD. The default is 0.
+
+        Returns
+        -------
+        dict
+            # ----- combined extraction -----
+            spec_extr=spec_extr,
+            err_extr=err_extr,
+            # ----- first extraction -----
+            spec_extr1=spec_extr1,
+            err_extr1=err_extr1,
+            # ----- second extraction (after sigma-clipping) -----
+            spec_extr2=spec_extr2,
+            err_extr2=err_extr2,
+            # ----- inconsistent pixels between 1&2, True if difference > 3sigma -----
+            mask_extr=mask_extr,
+            # ----- simple extraction -----
+            spec_sum=ap_im.sum(axis=1),
+            err_sum=ap_im_err.sum(axis=1),
+            # ----- reconstructed profile -----
+            prof_recon=prof_recon,
+            # ----- reconstructed aperture -----
+            ap_im=ap_im,
+            ap_im_recon=ap_im_recon,
+            ap_im_recon1=ap_im_recon1,
+            ap_im_recon2=ap_im_recon2,
+            # ----- aperture coordinates -----
+            ap_im_xx=ap_im_xx,
+            ap_im_xx_cor=ap_im_xx_cor,
+            ap_im_yy=ap_im_yy,.
+
+        """
+        return extract_aperture(im, self.ap_center_interp[iap], n_chunks=n_chunks, ap_width=self.ap_width,
+                                profile_oversample=profile_oversample, profile_smoothness=profile_smoothness,
+                                num_sigma_clipping=num_sigma_clipping, gain=gain, ron=ron)
 
 
 def test_aperture():
-    from twodspec.aperture import Aperture
     from astropy.io import fits
     import matplotlib.pyplot as plt
     plt.rcParams.update({"font.size": 15})
