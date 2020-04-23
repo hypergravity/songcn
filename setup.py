@@ -33,5 +33,5 @@ setuptools.setup(
               'astropy',
               'skimage',
               'joblib',
-              'ipyparallel']
+              'ipyparallel', 'laspec']
 )
