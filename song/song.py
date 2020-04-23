@@ -33,38 +33,19 @@ import glob
 import os
 from collections import OrderedDict
 
+import joblib
 import numpy as np
 from astropy.io import fits
 from astropy.table import Table, Column
 from astropy.time import Time
-from joblib import Parallel, delayed, dump
+from joblib import Parallel, delayed
 from matplotlib import pyplot as plt
 
-from twodspec import extract
+from twodspec import extract, thar
 from twodspec.aperture import Aperture
 from twodspec.ccd import CCD
-from . import __path__
-from . import thar
+from .slit import Slit
 from .utils import scan_files
-
-
-class SongSlit(object):
-    """ Song Slit class """
-    slit = -1
-    flat = None
-    aprec = None
-    background = None
-    blaze = None
-    norm = None
-    thar_list = {}
-    star_list = {}
-
-    def extract_thar(self, img_thar):
-        # return wave to thar_list
-        pass
-
-    def extract_star(self, img_star):
-        pass
 
 
 class Song(Table):
@@ -85,13 +66,13 @@ class Song(Table):
     kwargs_background_star = dict(q=(45, 45), kernel_size=(17, 17), sigma=(11, 7))
     # 4. normalize FLAT
     kwargs_normflat = dict(max_dqe=0.04, min_snr=20, smooth_blaze=5,
-                           n_chunks=8, ap_width=15, profile_oversample=10,
+                           n_chunks=8, profile_oversample=10,
                            profile_smoothness=1e-2, num_sigma_clipping=20,
-                           gain=1., ron=0)  # root directory
+                           gain=1., ron=0, n_jobs=1)  # root directory
     # 5. extract 1D spectrum
-    kwargs_extract = dict(n_chunks=8, ap_width=15, profile_oversample=10,
+    kwargs_extract = dict(n_chunks=8, profile_oversample=10,
                           profile_smoothness=1e-2, num_sigma_clipping=20,
-                          gain=1., ron=0)
+                          gain=1., ron=0, n_jobs=1)
 
     # data & work directory
     rootdir = ""
@@ -106,8 +87,10 @@ class Song(Table):
 
     # unique slits
     unique_slits = []
+    slits = []
 
     # master BIAS
+    master_bias_fp = ""
     master_bias = None
     master_ron = None
 
@@ -124,12 +107,12 @@ class Song(Table):
     test_list = list()
 
     # load ThAr template in Song class
-    print("@SONG: [ThAr] loading ThAr template ...")
-    thar_line_list = np.loadtxt(__path__[0] + "/calibration/thar.dat")
-    thar_solution_temp = (
-        fits.getdata(__path__[0] + "/calibration/thar_template.fits", ext=1),
-        fits.getdata(__path__[0] + "/calibration/thar_template.fits", ext=2),
-        fits.getdata(__path__[0] + "/calibration/thar_template.fits", ext=3))
+    # print("@SONG: [ThAr] loading ThAr template ...")
+    # thar_line_list = np.loadtxt(__path__[0] + "/calibration/thar.dat")
+    # thar_solution_temp = (
+    #     fits.getdata(__path__[0] + "/calibration/thar_template.fits", ext=1),
+    #     fits.getdata(__path__[0] + "/calibration/thar_template.fits", ext=2),
+    #     fits.getdata(__path__[0] + "/calibration/thar_template.fits", ext=3))
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -162,7 +145,7 @@ class Song(Table):
         subdir:
             night / day
         node:
-            1: Spain, 2: China
+            1: Tenerife, 2: China
 
         Returns
         -------
@@ -181,7 +164,7 @@ class Song(Table):
         assert os.path.exists(rawdir)  # raw dir
         # if jdnight:
         #     assert os.path.exists(rawdir1)
-        # if dir_work does not exist, make it
+        # if extdir does not exist, make it
         if not os.path.exists(extdir):
             print("@SONG: making directory [{}]..".format(extdir))
             os.mkdir(extdir)
@@ -220,15 +203,22 @@ class Song(Table):
 
         return s
 
-    def pipeline_bias(self):
-        # BIAS: up to 120 frame
+    def pipeline_bias(self, n_select=120, method_select='random'):
+        """ process bias
+        Parameters
+        ----------
+        n_select:
+            number of frames used
+        method_select:
+            {"random", "top", "bottom", "all"}
+        """
         self.master_bias, self.master_ron = self.ezmaster(
-            {"IMAGETYP": "BIAS"}, n_select=120, method_select='all',
+            {"IMAGETYP": "BIAS"}, n_select=n_select, method_select=method_select,
             method_combine='median', std=True)
         # write to disk
         self.master_bias_fp = "{}/masterbias_{}.fits".format(self.extdir, self.date)
+        print("@SONG: master bias written to {}".format(self.master_bias_fp))
         self.master_bias.write(self.master_bias_fp, overwrite=True)
-        print("@SONG: master bias written to *{}*".format(self.master_bias_fp))
         return
 
     def pipeline_flat(self, slits="all", n_jobs_trace=1, verbose=10):
@@ -239,8 +229,6 @@ class Song(Table):
             slits = [slits]
 
         for slit in slits:
-
-            print()
             print()
             print("@SONG: processing FLAT for SLIT = ", slit)
 
@@ -254,88 +242,73 @@ class Song(Table):
             flat = flat - self.master_bias
 
             # 3.write to disk
-            flat_fp = self.dir_work + "/masterflat_{}_slit{}.fits".format(
-                self.date, slit)
+            flat_fp = self.extdir + "/masterflat_{}_slit{}.fits".format(self.date, slit)
             print("@SONG: writing to {} ...".format(flat_fp))
             flat.write(flat_fp, overwrite=True)
 
-            # 4.choose best sigma (at least 50 orders, else raise error)
-            sigmas = np.arange(1, 10, 0.3)
-            n_ap = Parallel(n_jobs=n_jobs_trace, verbose=verbose)(
-                delayed(_try_trace_apertures)(np.array(flat), sigma_)
-                for sigma_ in sigmas)
-            n_ap = np.array(n_ap)
-            try:
-                assert np.sum(n_ap >= 50) > 0 and np.max(n_ap) < 52
-            except AssertionError as ae:
-                print("@SONG: the n_ap: ", np.unique(n_ap))
-                print(n_ap)
-                raise ae
-            sigma_best = sigmas[np.argmax(n_ap)]
-            print("@SONG: best sigma: {:0.2f}".format(sigma_best))
+            # 4. trace apertures
+            ap = Aperture.trace(flat, method="naive", ap_width=15, sigma=7, maxdev=7, polydeg=4)
 
-            # 4'. trace apertures
-            print("@SONG: tracing apertures ...")
-            ap = Aperture.trace(flat, method="canny", sigma=sigma_best)
-            ap.polyfit(4)
+            # # figure of apertures
+            # fig = plt.figure(figsize=(8, 8))
+            # plt.imshow(np.log10(flat.data))
+            # plt.plot(ap.ap_center.T, ap.x, 'w')
+            # plt.xlabel("X coordinate")
+            # plt.ylabel("Y coordinate")
+            # plt.title("SLIT {}".format(slit))
+            # fig.tight_layout()
 
-            # figure of apertures
-            fig = plt.figure(figsize=(8, 8))
-            plt.imshow(np.log10(flat.data))
-            plt.plot(ap.ap_center.T, ap.x, 'w')
-            plt.xlabel("X coordinate")
-            plt.ylabel("Y coordinate")
-            plt.title("SLIT {}".format(slit))
-            fig.tight_layout()
-
-            # figure of horizontal slice
-            fig = plt.figure(figsize=(12, 6))
-            plt.plot(flat[1024])
-            plt.vlines(ap.ap_center[:, 1023], 0, 10000)
-            plt.xlabel("X coordinate")
-            plt.ylabel("Y coordinate")
-            plt.title("SLIT {} | Slice of row 1024".format(slit))
-            fig.tight_layout()
+            # # figure of horizontal slice
+            # fig = plt.figure(figsize=(12, 6))
+            # plt.plot(flat[1024])
+            # plt.vlines(ap.ap_center[:, 1023], 0, 10000)
+            # plt.xlabel("X coordinate")
+            # plt.ylabel("Y coordinate")
+            # plt.title("SLIT {} | Slice of row 1024".format(slit))
+            # fig.tight_layout()
 
             # 5.background
             print("@SONG: computing background ...")
             bg = CCD(ap.background(flat, **self.kwargs_background_flat))
-            bg_fp = self.dir_work + "/masterflat_{}_slit{}_bg.fits".format(self.date, slit)
+            bg_fp = self.extdir + "/masterflat_{}_slit{}_bg.fits".format(self.date, slit)
             bg.write(bg_fp, overwrite=True)
             flat = flat - bg
 
+            # 6. calculate blaze functions and sensitivity
             print("@SONG: computing blaze function & sentitivity ...")
-            blz, norm = extract.make_normflat(np.array(flat), ap, **self.kwargs_normflat)
-            blz_fp = self.dir_work + "/masterblz_{}_slit{}.fits".format(self.date, slit)
-            norm_fp = self.dir_work + "/masternorm_{}_slit{}.fits".format(self.date, slit)
-            blz = CCD(blz)
-            norm = CCD(norm)
-            print("@SONG: writing blaze function to {}...".format(blz_fp))
-            blz.write(blz_fp, overwrite=True)
-            print("@SONG: writing sentivity to {}...".format(norm_fp))
-            norm.write(norm_fp, overwrite=True)
+            # blz_bg, norm_bg = extract.make_normflat(np.array(flat), ap, **self.kwargs_normflat)
+            blaze, sensitivity = ap.make_normflat(flat, **self.kwargs_normflat)
+
+            blaze = CCD(blaze)
+            blaze_fp = self.extdir + "/masterblaze_{}_slit{}.fits".format(self.date, slit)
+            print("@SONG: writing blaze function to {}...".format(blaze_fp))
+            blaze.write(blaze_fp, overwrite=True)
+
+            sensitivity = CCD(sensitivity)
+            sensitivity_fp = self.extdir + "/mastersens_{}_slit{}.fits".format(self.date, slit)
+            print("@SONG: writing sentivity to {}...".format(sensitivity_fp))
+            sensitivity.write(sensitivity_fp, overwrite=True)
 
             self.master_flats[slit] = dict(
                 # slit
-                slit=slit,          # slit number
+                slit=slit,  # slit number
                 # flat
-                flat=flat,          # flat-bias
-                flat_fp=flat_fp,    # flat fp
-                # sigma
-                sigma_best=sigma_best,
+                flat=flat,  # flat-bias
+                flat_fp=flat_fp,  # flat fp
                 # apertures
                 ap=ap,
                 # background
                 bg=bg,
                 bg_fp=bg_fp,
                 # blaze function
-                blz=blz,
-                blz_fp=blz_fp,
+                blaze=blaze,
+                blaze_fp=blaze_fp,
                 # sentivity
-                norm=norm,
-                norm_fp=norm_fp,
+                sensitivity=sensitivity,
+                sensitivity_fp=sensitivity_fp,
             )
             print("@SONG: finishing processing SLIT {}".format(slit))
+
         return
 
     def pipeline_thar(self, poly_order=(5, 10)):
@@ -389,11 +362,11 @@ class Song(Table):
 
             # save figures
             fig = calibration_results[2]
-            fig.savefig(self.dir_work + "thar{}_{:s}".format(
+            fig.savefig(self.extdir + "thar{}_{:s}".format(
                 slit, thar_fn.replace(".fits", "_diagnostics.pdf")))
             plt.close(fig)
             fig = calibration_results[3]
-            fig.savefig(self.dir_work + "thar{}_{:s}".format(
+            fig.savefig(self.extdir + "thar{}_{:s}".format(
                 slit, thar_fn.replace(".fits", "_used_lines.pdf")))
             plt.close(fig)
 
@@ -414,7 +387,7 @@ class Song(Table):
             h1 = fits.hdu.ImageHDU(thar_sp)  # ThAr spectrum
             h2 = fits.hdu.ImageHDU(thar_err)  # ThAr error spectrum
             hl = fits.HDUList([h0, h1, h2])
-            hl.writeto(self.dir_work + "thar{}_{:s}".format(slit, thar_fn),
+            hl.writeto(self.extdir + "thar{}_{:s}".format(slit, thar_fn),
                        overwrite=True)
             # figure(); plot(wave_final.T, thar_sp.T)
 
@@ -504,7 +477,7 @@ class Song(Table):
             the dict of colname:value pairs
         method: string, {"all", "random", "top", "bottom"}
             the method adopted
-        n_images:
+        n_select:
             the number of images that will be selected
             if n_images is larger than the number of images matched conditions,
             then n_images is forced to be n_matched
@@ -670,26 +643,29 @@ class Song(Table):
             return u, uind, uinv, ucts
 
     def read(self, fp):
+        """ read a CCD frame """
         return CCD.read(fp, **self.kwargs_read)
 
     def reads(self, fps, method="median", std=False):
+        """ actually a combine method """
         return CCD.reads(fps, method=method, std=std, **self.kwargs_read)
 
-    def ezmaster(self, cond_dict={"IMAGETYP":"BIAS"}, n_select=10,
+    def ezmaster(self, cond_dict={"IMAGETYP": "BIAS"}, n_select=10,
                  method_select="top", method_combine="median", std=False):
         """
 
         Parameters
         ----------
-        imgtype: string
-            {"BIAS", "FLAT", "FLATI2", "THAR", "THARI2",
-             "STAR", "STARI2", "TEST"}
+        cond_dict: dict
+            conditions on {"BIAS", "FLAT", "FLATI2", "THAR", "THARI2", "STAR", "STARI2", "TEST"}
         n_select: int
             number of images will be selected
         method_select:
             scheme of selection
         method_combine:
             method of combining
+        std:
+            if True, return average and std
 
         Returns
         -------
@@ -715,7 +691,7 @@ class Song(Table):
 
     def draw(self, save=None, figsize=(15, 6), return_fig=False):
         """ a description of observation """
-        ljd = self["JD-MID"] + 8 / 24
+        # ljd = self["JD-MID"] + 8 / 24
         # lhour = (np.mod(ljd, 1) + 0.5) * 24
 
         fig = plt.figure(figsize=figsize)
@@ -786,7 +762,7 @@ class Song(Table):
 
         ax2 = ax.twiny()
         ax2.set_xlabel("{}-{}-{} Beijing local time (UTC+8 Hour)".format(self.date[:4], self.date[4:6], self.date[6:8]))
-        ax2.set_xticks(np.linspace(12, 36, 13), minor=True)
+        ax2.set_xticks(np.linspace(12, 36, 13))
         ax2.set_xticklabels(["{:.0f}".format(_) for _ in np.mod(np.linspace(12, 36, 13), 24)])
         ax2.set_xlim(12, 36)
         ax2.grid(True, axis='x', linestyle='--')
@@ -795,7 +771,7 @@ class Song(Table):
 
         if save is True:
             # save to default
-            figpath = self.extdir+"/summary_{}".format(self.date)
+            figpath = self.extdir+"/summary_{}.pdf".format(self.date)
             print("@SONG: saving summary figure to {}".format(figpath))
             fig.savefig(figpath)
         elif save is not None:
@@ -865,7 +841,7 @@ class Song(Table):
 
         # sensitivity correction
         im_star_denm = (im_star - self.master_bias) / self.master_flats[slit]['norm']
-        #im_star_denm_err = np.sqrt(np.abs(im_star_denm)) / flats[slit]['norm']
+        # im_star_denm_err = np.sqrt(np.abs(im_star_denm)) / flats[slit]['norm']
 
         # scattered light substraction
         ap = self.master_flats[slit]['ap']
@@ -924,6 +900,34 @@ class Song(Table):
                    overwrite=True)
 
         return star_fn
+
+    def daily(self, ipcprofile="default"):
+        """ daily pipeline """
+        joblib.dump(self, "{}/{}_song.dump".format(self.extdir, self.date))
+        print("===========================================")
+        print("@Song: unique slits are ", self.unique_slits)
+        print("===========================================")
+
+        for slit in self.unique_slits:
+            this_slit = Slit(slit=slit, extdir=self.extdir)
+            # bias
+            fps_bias = self["fps"][self.ezselect_all({"IMAGETYP": "BIAS", "SLIT": slit})]
+            this_slit.proc_bias(fps_bias)
+            # flat
+            fps_flat = self["fps"][self.ezselect_all({"IMAGETYP": "FLAT", "SLIT": slit})]
+            this_slit.proc_flat(fps_flat)
+            # thar
+            fps_thar = list(self["fps"][self.ezselect_all({"IMAGETYP": "THAR", "SLIT": slit})][:])
+            this_slit.proc_thar(fps_thar, ipcprofile=ipcprofile)
+            # star
+            fps_star = list(self["fps"][self.ezselect_all({"IMAGETYP": "STAR", "SLIT": slit})][:])
+            this_slit.proc_star(fps_star, ipcprofile=ipcprofile)
+
+            joblib.dump(this_slit, "{}/{}_slit{}.dump".format(self.extdir, self.date, slit))
+            print("===========================================")
+        print("DONE!~")
+        print("===========================================")
+        return
 
 
 def _try_trace_apertures(flat, sigma_):
@@ -1031,14 +1035,12 @@ def list_image(t, imagetp="FLAT", return_col=None, kwds=None, max_print=None):
 # CCD operations
 def read_image(fp, hdu=0, gain=1., ron=0., unit='adu', trim=None, rot90=0):
     """ read image """
-    ccds = CCD.read(fp, hdu=hdu, gain=gain, ron=ron, unit=unit, trim=trim,
-                    rot90=rot90)
+    ccds = CCD.read(fp, hdu=hdu, gain=gain, ron=ron, unit=unit, trim=trim, rot90=rot90)
     return ccds
 
 
 # combine CCDs
-def combine_images(fps, method="median", std=False,
-                   hdu=0, gain=1., ron=0., unit='adu', trim=None, rot90=0):
+def combine_images(fps, method="median", std=False, hdu=0, gain=1., ron=0., unit='adu', trim=None, rot90=0, **kwargs):
     """ combine images
 
     Parameters

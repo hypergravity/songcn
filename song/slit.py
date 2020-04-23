@@ -283,7 +283,11 @@ class Slit:
                 # self.tws = table.vstack(dv.gather("tws"))
                 # self.tws.sort("jdmid")
                 print("@Slit[{}]: Done!)".format(self.slit))
-                print("saved to files: \n ", dv.gather("fps_out"))
+                print("saved to files: \n ")
+                print("========")
+                for fp in dv.gather("fps_out"):
+                    print(fp)
+                print("========")
         else:
             # single star
 
