@@ -908,6 +908,7 @@ class Song(Table):
         print("@Song: unique slits are ", self.unique_slits)
         print("===========================================")
 
+        slits = []
         for slit in self.unique_slits:
             this_slit = Slit(slit=slit, extdir=self.extdir)
             # bias
@@ -924,10 +925,11 @@ class Song(Table):
             this_slit.proc_star(fps_star, ipcprofile=ipcprofile)
 
             joblib.dump(this_slit, "{}/{}_slit{}.dump".format(self.extdir, self.date, slit))
+            slits.append(this_slit)
             print("===========================================")
         print("DONE!~")
         print("===========================================")
-        return
+        return slits
 
 
 def _try_trace_apertures(flat, sigma_):
