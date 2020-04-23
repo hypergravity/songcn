@@ -171,13 +171,10 @@ def scan_fits_header(fps, verbose=True):
     return t
 
 
-def scan_files(dirpath, n_jobs=2, verbose=True):
+def scan_files(fps, n_jobs=2, verbose=True):
     """ scan fits file headers under dirpath """
-
-    fps_all = glob.glob(dirpath + "/*.fits")
-    fps_all.sort()
-    t = grab_fits_header(fps_all, n_jobs=n_jobs, verbose=verbose)
-
+    fps.sort()
+    t = grab_fits_header(fps, n_jobs=n_jobs, verbose=verbose)
     return t
 
 
