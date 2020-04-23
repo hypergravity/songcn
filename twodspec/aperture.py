@@ -28,7 +28,7 @@ import numpy as np
 from .background import apbackground
 from .extract import (get_aperture_section, extract_profile, extract_aperture, extract_all,
                       make_normflat, extract_profile_simple)
-from .trace import trace_canny_col, trace_naive_max
+from .trace import trace_naive_max
 
 
 # ###################################################### #
