@@ -4,6 +4,8 @@ import numpy as np
 from astropy.io import fits
 from collections import OrderedDict
 
+__all__ = ["CCD", ]
+
 
 class CCD(np.ndarray):
     """ CCD class, to cope with ccd images
@@ -129,20 +131,37 @@ class CCD(np.ndarray):
     # read from fits
     ###########################
     @staticmethod
-    def reads(fps=["",], method="median", std=False,
-              hdu=0, gain=1., ron=0., unit="adu", trim=None, rot90=0):
+    def reads(fps=["",], method="median", std=False, hdu=0, gain=1., ron=0., unit="adu", trim=None, rot90=0):
+        """ read and combine multiple ccd frames """
+        # read
         ccds = CCD([CCD.read(fp, hdu=hdu, gain=gain, ron=ron, unit=unit, trim=trim, rot90=rot90) for fp in fps])
+
+        # combine
         if method == "median":
             ccd_comb = np.median(ccds, axis=0)
         elif method == "mean":
             ccd_comb = np.mean(ccds, axis=0)
         else:
             raise ValueError("@CCD.combine: bad method [{}]".format(method))
+        # set info
+        ccd_comb.gain = gain
+        ccd_comb.ron = ron
+        ccd_comb.unit = unit
+        ccd_comb._trim = trim
+        ccd_comb._rot90 = rot90
 
         if not std:
             return ccd_comb
         else:
-            return ccd_comb, np.std(ccds, axis=0)
+            # evaluate std
+            ccd_std = np.std(ccds, axis=0)
+            # set info
+            ccd_std.gain = gain
+            ccd_std.ron = ron
+            ccd_std.unit = unit
+            ccd_std._trim = trim
+            ccd_std._rot90 = rot90
+            return ccd_comb, ccd_std
 
     @staticmethod
     def read(fp="", hdu=0, gain=1., ron=0., unit="adu", trim=None, rot90=0):
