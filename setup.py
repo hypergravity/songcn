@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name='songcn',
-    version='0.0.5',
+    version='0.0.7',
     author='Bo Zhang',
     author_email='bozhang@nao.cas.cn',
     description='The SONG-China data processing pipeline.', # short description
@@ -29,6 +29,9 @@ setuptools.setup(
                   "": ["LICENSE"]
                   },
     #include_package_data=True, commented to include data!
-    requires=['numpy', 'scipy', 'matplotlib', 'astropy', 'skimage',
-              'joblib', 'ccdproc']
+    requires=['numpy', 'scipy', 'matplotlib',
+              'astropy',
+              'skimage',
+              'joblib',
+              'ipyparallel']
 )
