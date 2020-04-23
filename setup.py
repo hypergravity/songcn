@@ -29,9 +29,6 @@ setuptools.setup(
                   "": ["LICENSE"]
                   },
     #include_package_data=True, commented to include data!
-    requires=['numpy', 'scipy', 'matplotlib',
-              'astropy',
-              'skimage',
-              'joblib',
-              'ipyparallel', 'laspec']
+    requires=['numpy', 'scipy', 'matplotlib', 'astropy',  # 'skimage',
+              'joblib', 'ipyparallel', 'laspec']
 )
