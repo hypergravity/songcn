@@ -193,7 +193,7 @@ class Slit:
                     self.proc_thar(fp_, add=True)
             else:
                 rc = Client(profile=ipcprofile)
-                print("@Slit[{}]: dispatching {} thar to ipcluster(profile={},nproc={})".format(
+                print("@Slit[{}]: dispatching {} thar to ipcluster (profile={}, nproc={}) ...".format(
                     self.slit, len(fp), ipcprofile, len(rc.ids)))
                 dv = rc.direct_view()
                 dv.block = True
