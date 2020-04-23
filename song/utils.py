@@ -29,9 +29,9 @@ import sys
 
 import numpy as np
 from astropy.io import fits
+from astropy.nddata import CCDData
 from astropy.table import Table, Column
 from tqdm import trange
-import ccdproc
 from joblib import Parallel, delayed
 
 
@@ -223,4 +223,4 @@ def scan_flux90(t, ind_scan=None, ind_type='bool', pct=90,
 
 
 def scan_flux90_(fp, pct, **kwargs):
-    return np.nanpercentile(ccdproc.CCDData.read(fp, **kwargs), pct)
+    return np.nanpercentile(CCDData.read(fp, **kwargs), pct)
