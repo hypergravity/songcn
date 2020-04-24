@@ -91,7 +91,9 @@ class Slit:
                            n_chunks=8, profile_oversample=10,
                            profile_smoothness=1e-2, num_sigma_clipping=20,
                            gain=1., ron=0, n_jobs=1)  # root directory
-    # 5. extract 1D spectrum
+    # 5. grating equation kwargs
+    kwargs_grating = dict(deg=(4, 10), nsigma=3, min_select=900)
+    # 6. extract 1D spectrum
     kwargs_extract = dict(n_chunks=8, profile_oversample=10,
                           profile_smoothness=1e-2, num_sigma_clipping=20,
                           gain=1., ron=0, n_jobs=1)
@@ -237,7 +239,7 @@ class Slit:
             y = tlines["order"]
             z = tlines["line"]
 
-            pf1, pf2, indselect = thar.grating_equation(x, y, z, deg=(4, 10), nsigma=3)
+            pf1, pf2, indselect = thar.grating_equation(x, y, z, **self.kwargs_grating)
             tlines.add_column(table.Column(indselect, "indselect"))
             nlines = np.sum(indselect)
             # rms

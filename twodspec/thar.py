@@ -273,7 +273,7 @@ def find_lines(wave_init, thar_obs, thar_line_list, npix_chunk=20):
     return tlines
 
 
-def grating_equation(x, y, z, deg=(4, 10), nsigma=3):
+def grating_equation(x, y, z, deg=(4, 10), nsigma=3, min_select=None):
     """
     Fit a grating equation (2D polynomial function) to data
 
@@ -289,6 +289,8 @@ def grating_equation(x, y, z, deg=(4, 10), nsigma=3):
         The degree of the 2D polynomial. The default is (4, 10).
     nsigma : float, optional
         The data outside of the nsigma*sigma radius is rejected iteratively. The default is 3.
+    min_select : int or None, optional
+        The minimal number of selected lines. The default is None.
 
     Returns
     -------
@@ -306,12 +308,18 @@ def grating_equation(x, y, z, deg=(4, 10), nsigma=3):
         indkick = np.abs(z_res[indselect]) > nsigma * sigma
         n_kick = np.sum(indkick)
         if n_kick == 0:
+            # no lines to kick
             break
+        elif min_select is not None:
+            # selected lines reach the threshold
+            if np.sum(indselect) <= min_select:
+                break
         else:
+            # continue to reject lines
             indselect &= np.abs(z_res) < nsigma * sigma
             iiter += 1
         print("@grating_equation: iter-{} \t{} lines kicked, {} lines left, rms={:.5f} A".format(
-            iiter, n_kick, sum(indselect), sigma))
+            iiter, n_kick, np.sum(indselect), sigma))
     pf1.rms = sigma
 
     # pf2
