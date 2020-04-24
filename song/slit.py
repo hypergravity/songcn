@@ -43,7 +43,7 @@ Slit width(μm) width(") Length(") Resolution(λ/Δλ) Sampling(pix)
 3    100       3.44     10        36000            6.76
 4    60        2.06     10        60000            4.05
 5    45        1.55     10        80000            3.03
-6    36        1.24     10        100              2.43
+6    36        1.24     10        100000           2.43
 7    30        1.03     10        120000           2.02
 8    25        0.86     10        145000           1.69
 9    20        0.69     10        181000           1.35
@@ -192,6 +192,7 @@ class Slit:
                 print("@Slit[{}]: processing {} thar sequentially ...".format(
                     self.slit, len(fp)))
                 for fp_ in fp:
+                    print("@Slit[{}]: processing {}...".format(self.slit, fp_))
                     self.proc_thar(fp_, add=True)
             else:
                 rc = Client(profile=ipcprofile)
@@ -268,9 +269,12 @@ class Slit:
             # multiple star
             if ipcprofile is None:
                 # sequentially
-                print("@Slit[{}]: processing {} star sequentially ...".format(
-                    self.slit, len(fp)))
-                return [self.proc_star(fp_) for fp_ in fp]
+                print("@Slit[{}]: processing {} star sequentially ...".format(self.slit, len(fp)))
+                results = []
+                for fp_ in fp:
+                    print("@Slit[{}]: processing {}...".format(self.slit, fp_))
+                    results.append(self.proc_star(fp_))
+                    return results
             else:
                 # parallel
                 rc = Client(profile=ipcprofile)
