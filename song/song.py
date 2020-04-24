@@ -901,7 +901,7 @@ class Song(Table):
 
         return star_fn
 
-    def daily(self, ipcprofile="default"):
+    def daily(self, star=True, stari2=False, flati2=False, ipcprofile="default"):
         """ daily pipeline """
         joblib.dump(self, "{}/{}_song.dump".format(self.extdir, self.date))
         print("===========================================")
@@ -911,19 +911,37 @@ class Song(Table):
         slits = []
         for slit in self.unique_slits:
             this_slit = Slit(slit=slit, extdir=self.extdir)
+            # ind
+            ind_bias = self.ezselect_all({"IMAGETYP": "BIAS", "SLIT": slit})
+            ind_flat = self.ezselect_all({"IMAGETYP": "FLAT", "SLIT": slit})
+            ind_thar = self.ezselect_all({"IMAGETYP": "THAR", "SLIT": slit})
+            ind_star = self.ezselect_all({"IMAGETYP": "STAR", "SLIT": slit})
+            ind_flati2 = self.ezselect_all({"IMAGETYP": "FLATI2", "SLIT": slit})
+            ind_stari2 = self.ezselect_all({"IMAGETYP": "STARI2", "SLIT": slit})
+            if ind_bias is None or ind_flat is None or ind_thar is None:
+                # need calibration images!
+                continue
             # bias
-            fps_bias = self["fps"][self.ezselect_all({"IMAGETYP": "BIAS", "SLIT": slit})]
+            fps_bias = self["fps"][ind_bias]
             this_slit.proc_bias(fps_bias)
             # flat
-            fps_flat = self["fps"][self.ezselect_all({"IMAGETYP": "FLAT", "SLIT": slit})]
+            fps_flat = self["fps"][ind_flat]
             this_slit.proc_flat(fps_flat)
             # thar
-            fps_thar = list(self["fps"][self.ezselect_all({"IMAGETYP": "THAR", "SLIT": slit})][:])
+            fps_thar = list(self["fps"][ind_thar])
             this_slit.proc_thar(fps_thar, ipcprofile=ipcprofile)
             # star
-            fps_star = list(self["fps"][self.ezselect_all({"IMAGETYP": "STAR", "SLIT": slit})][:])
-            this_slit.proc_star(fps_star, ipcprofile=ipcprofile)
-
+            if star and ind_star is not None:
+                fps_star = list(self["fps"][ind_star])
+                this_slit.proc_star(fps_star, ipcprofile=ipcprofile, prefix="tstar")
+            # flati2
+            if flati2 and ind_flati2 is not None:
+                fps_flati2 = list(self["fps"][ind_flati2])
+                this_slit.proc_star(fps_flati2, ipcprofile=ipcprofile, prefix="tflati2")
+            # stari2
+            if stari2 and ind_stari2 is not None:
+                fps_stari2 = list(self["fps"][ind_star])
+                this_slit.proc_star(fps_stari2, ipcprofile=ipcprofile, prefix="tstari2")
             joblib.dump(this_slit, "{}/{}_slit{}.dump".format(self.extdir, self.date, slit))
             slits.append(this_slit)
             print("===========================================")
