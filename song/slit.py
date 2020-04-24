@@ -205,6 +205,7 @@ class Slit:
                 dv.execute("tws = this_slit.tws")
                 self.tws = table.vstack(dv.gather("tws"))
                 self.tws.sort("jdmid")
+                dv.execute("%reset -f")
         else:
             # single thar
 
@@ -290,6 +291,7 @@ class Slit:
                 for fp in dv.gather("fps_out"):
                     print(fp)
                 print("========")
+                dv.execute("%reset -f")
         else:
             # single star
 
