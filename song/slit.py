@@ -349,7 +349,7 @@ class Slit:
                 assert os.path.exists(self.extdir)
                 fp_output = "{}/{}_{}".format(self.extdir, prefix, os.path.basename(fp))
                 print("@Slit[{}]: saving to {} ...".format(self.slit, fp_output))
-                tstar.write(fp_output, ovebrwrite=True)
+                tstar.write(fp_output, overwrite=True)
                 return fp_output
 
     def __init__(self, slit=5, node="delingha", extdir="", ignore_warnings=True):
