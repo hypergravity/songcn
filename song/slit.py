@@ -42,10 +42,10 @@ Slit width(μm) width(") Length(") Resolution(λ/Δλ) Sampling(pix)
 2    ø20       ø0.69    -         180000           1.35
 3    100       3.44     10        36000            6.76
 4    60        2.06     10        60000            4.05
-5    45        1.55     10        80000            3.03
-6    36        1.24     10        100000           2.43
-7    30        1.03     10        120000           2.02
-8    25        0.86     10        145000           1.69
+5    45        1.55     10        80000            3.03          *
+6    36        1.24     10        100000           2.43          *
+7    30        1.03     10        120000           2.02          *
+8    25        0.86     10        145000           1.69          *
 9    20        0.69     10        181000           1.35
 10   2mm hole  -        -         -                -
 """
@@ -274,7 +274,7 @@ class Slit:
                 for fp_ in fp:
                     print("@Slit[{}]: processing {}...".format(self.slit, fp_))
                     results.append(self.proc_star(fp_))
-                    return results
+                return results
             else:
                 # parallel
                 rc = Client(profile=ipcprofile)
@@ -349,7 +349,7 @@ class Slit:
                 assert os.path.exists(self.extdir)
                 fp_output = "{}/{}_{}".format(self.extdir, prefix, os.path.basename(fp))
                 print("@Slit[{}]: saving to {} ...".format(self.slit, fp_output))
-                tstar.write(fp_output, overwrite=True)
+                tstar.write(fp_output, ovebrwrite=True)
                 return fp_output
 
     def __init__(self, slit=5, node="delingha", extdir="", ignore_warnings=True):
