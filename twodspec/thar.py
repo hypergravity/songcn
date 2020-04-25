@@ -305,21 +305,20 @@ def grating_equation(x, y, z, deg=(4, 10), nsigma=3, min_select=None):
         z_pred = pf1.predict(x, y)
         z_res = z_pred - z
         sigma = np.std(z_res[indselect])
-        indkick = np.abs(z_res[indselect]) > nsigma * sigma
-        n_kick = np.sum(indkick)
-        if n_kick == 0:
+        indreject = np.abs(z_res[indselect]) > nsigma * sigma
+        n_reject = np.sum(indreject)
+        if n_reject == 0:
             # no lines to kick
             break
-        elif min_select is not None:
+        elif isinstance(min_select, int) and min_select >= 0 and np.sum(indselect) <= min_select:
             # selected lines reach the threshold
-            if np.sum(indselect) <= min_select:
-                break
+            break
         else:
             # continue to reject lines
             indselect &= np.abs(z_res) < nsigma * sigma
             iiter += 1
         print("@grating_equation: iter-{} \t{} lines kicked, {} lines left, rms={:.5f} A".format(
-            iiter, n_kick, np.sum(indselect), sigma))
+            iiter, n_reject, np.sum(indselect), sigma))
     pf1.rms = sigma
 
     # pf2
