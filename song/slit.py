@@ -274,7 +274,12 @@ class Slit:
                 for fp_ in fp:
                     print("@Slit[{}]: processing {}...".format(self.slit, fp_))
                     results.append(self.proc_star(fp_))
+                # check invalid results
+                for fp in results:
+                    if prefix not in fp:
+                        Warning("@proc_star: >>> invalid data >>> {} ".format(fp))
                 return results
+
             else:
                 # parallel
                 rc = Client(profile=ipcprofile)
@@ -292,65 +297,74 @@ class Slit:
                 print("@Slit[{}]: Done!)".format(self.slit))
                 print("saved to files:")
                 print("========")
-                for fp in dv.gather("fps_out"):
+                results = dv.gather("fps_out")
+                for fp in results:
                     print(fp)
                 print("========")
                 dv.execute("%reset -f")
+                # check invalid results
+                for fp in results:
+                    if prefix not in fp:
+                        Warning("@proc_star: >>> invalid data >>> {} ".format(fp))
+                return results
         else:
             # single star
 
-            # 1.read star
-            hdr = self.read_header(fp)
-            # assert slit is correct
-            assert hdr["SLIT"] == self.slit
-            # star data
-            star_data = self.read_image(fp)
-            # star time
-            jdmid = hdr["JD-MID"]
-            exptime = hdr["EXPTIME"]
-            bvc = hdr["BVC"]
+            try:
+                # 1.read star
+                hdr = self.read_header(fp)
+                # assert slit is correct
+                assert hdr["SLIT"] == self.slit
+                # star data
+                star_data = self.read_image(fp)
+                # star time
+                jdmid = hdr["JD-MID"]
+                exptime = hdr["EXPTIME"]
+                bvc = hdr["BVC"]
 
-            # 2.subtract bias & correct sensitivity
-            star_bias_sens = (star_data - self.bias) / self.sensitivity
+                # 2.subtract bias & correct sensitivity
+                star_bias_sens = (star_data - self.bias) / self.sensitivity
 
-            # 3. subtract background
-            bg = self.ap.background(star_bias_sens, **self.kwargs_background_star)
-            star_bias_sens_bg = star_bias_sens - bg
+                # 3. subtract background
+                bg = self.ap.background(star_bias_sens, **self.kwargs_background_star)
+                star_bias_sens_bg = star_bias_sens - bg
 
-            # 4.extract star spectrum
-            rextr = self.ap.extract_all(star_bias_sens_bg, **self.kwargs_extract)
-            # star_obs = rextr["spec_sum"]
-            # star_err = rextr["err_sum"]
+                # 4.extract star spectrum
+                rextr = self.ap.extract_all(star_bias_sens_bg, **self.kwargs_extract)
+                # star_obs = rextr["spec_sum"]
+                # star_err = rextr["err_sum"]
 
-            # 5. append wavelength solution
-            id_tws = np.argmin(np.abs(self.tws["jdmid"]-jdmid))
-            rextr["wave"] = self.tws["wave_solu"][id_tws]
-            rextr["wave_rms"] = self.tws["rms"][id_tws]
-            rextr["blaze"] = self.blaze
+                # 5. append wavelength solution
+                id_tws = np.argmin(np.abs(self.tws["jdmid"]-jdmid))
+                rextr["wave"] = self.tws["wave_solu"][id_tws]
+                rextr["wave_rms"] = self.tws["rms"][id_tws]
+                rextr["blaze"] = self.blaze
 
-            # 6. append info
-            rextr["jdmid"] = jdmid
-            rextr["exptime"] = exptime
-            rextr["bvc"] = bvc
+                # 6. append info
+                rextr["jdmid"] = jdmid
+                rextr["exptime"] = exptime
+                rextr["bvc"] = bvc
 
-            # convert to table
-            tstar = table.Table([rextr])
-            tstar.meta = OrderedDict(hdr)
+                # convert to table
+                tstar = table.Table([rextr])
+                tstar.meta = OrderedDict(hdr)
 
-            # colname mapping
-            tstar.rename_columns(['err_extr', 'err_extr1', 'err_extr2', 'err_sum', 'mask_extr',
-                                  'spec_extr', 'spec_extr1', 'spec_extr2', 'spec_sum'],
-                                 ['err', 'err1', 'err2', 'err_sum', 'mask',
-                                  'flux', 'flux1', 'flux2', 'flux_sum'])
+                # colname mapping
+                tstar.rename_columns(['err_extr', 'err_extr1', 'err_extr2', 'err_sum', 'mask_extr',
+                                      'spec_extr', 'spec_extr1', 'spec_extr2', 'spec_sum'],
+                                     ['err', 'err1', 'err2', 'err_sum', 'mask',
+                                      'flux', 'flux1', 'flux2', 'flux_sum'])
 
-            if not write:
-                return tstar
-            else:
+                if not write:
+                    return tstar
                 assert os.path.exists(self.extdir)
                 fp_output = "{}/{}_{}".format(self.extdir, prefix, os.path.basename(fp))
                 print("@Slit[{}]: saving to {} ...".format(self.slit, fp_output))
                 tstar.write(fp_output, overwrite=True)
                 return fp_output
+
+            except Exception:
+                return fp
 
     def __init__(self, slit=5, node="delingha", extdir="", ignore_warnings=True):
         self.slit = slit

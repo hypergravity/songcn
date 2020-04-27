@@ -901,15 +901,24 @@ class Song(Table):
 
         return star_fn
 
-    def daily(self, star=True, stari2=False, flati2=False, ipcprofile="default"):
+    def daily(self, proc_slits="all", star=True, stari2=False, flati2=False, ipcprofile="default"):
         """ daily pipeline """
         joblib.dump(self, "{}/{}_song.dump".format(self.extdir, self.date))
         print("===========================================")
         print("@Song: unique slits are ", self.unique_slits)
         print("===========================================")
 
+        if proc_slits is "all":
+            # proc all slits
+            proc_slits = list(self.unique_slits)
+        else:
+            # proc the specified slits
+            assert isinstance(proc_slits, list)
+            for _ in proc_slits:
+                assert _ in self.unique_slits
+
         slits = []
-        for slit in self.unique_slits:
+        for slit in proc_slits:
             this_slit = Slit(slit=slit, extdir=self.extdir)
             # ind
             ind_bias = self.ezselect_all({"IMAGETYP": "BIAS", "SLIT": slit})
