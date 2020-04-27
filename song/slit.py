@@ -275,9 +275,9 @@ class Slit:
                     print("@Slit[{}]: processing {}...".format(self.slit, fp_))
                     results.append(self.proc_star(fp_))
                 # check invalid results
-                for fp in results:
-                    if prefix not in fp:
-                        Warning("@proc_star: >>> invalid data >>> {} ".format(fp))
+                for fp_ in results:
+                    if prefix not in fp_:
+                        warnings.warn(" >>> invalid data >>> {} ".format(fp_))
                 return results
 
             else:
@@ -298,14 +298,14 @@ class Slit:
                 print("saved to files:")
                 print("========")
                 results = dv.gather("fps_out")
-                for fp in results:
-                    print(fp)
+                for fp_ in results:
+                    print(fp_)
                 print("========")
                 dv.execute("%reset -f")
                 # check invalid results
-                for fp in results:
-                    if prefix not in fp:
-                        Warning("@proc_star: >>> invalid data >>> {} ".format(fp))
+                for fp_ in results:
+                    if prefix not in fp_:
+                        warnings.warn(" >>> invalid data >>> {} ".format(fp_))
                 return results
         else:
             # single star
