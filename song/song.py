@@ -967,7 +967,8 @@ class Song(Table):
             print("===========================================")
         print("DONE!~")
         print("===========================================")
-        return slits
+        self.slits = slits
+        return
 
 
 # def _try_trace_apertures(flat, sigma_):
