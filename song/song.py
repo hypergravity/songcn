@@ -901,7 +901,7 @@ class Song(Table):
 
         return star_fn
 
-    def daily(self, proc_slits="all", star=True, stari2=False, flati2=False, ipcprofile="default"):
+    def daily(self, proc_slits="all", sharebias=True, star=True, stari2=False, flati2=False, ipcprofile="default"):
         """ daily pipeline """
         joblib.dump(self, "{}/{}_song.dump".format(self.extdir, self.date))
         print("===========================================")
@@ -921,9 +921,20 @@ class Song(Table):
         for slit in proc_slits:
             this_slit = Slit(slit=slit, extdir=self.extdir)
             # ind
-            ind_bias = self.ezselect_all({"IMAGETYP": "BIAS", "SLIT": slit})
+            if sharebias:
+                # share bias
+                ind_bias = self.ezselect_all({"IMAGETYP": "BIAS"})
+                if len(ind_bias) > 120:
+                    ind_bias = np.random.choice(ind_bias, 120)
+            else:
+                # don't share
+                ind_bias = self.ezselect_all({"IMAGETYP": "BIAS", "SLIT": slit})
             ind_flat = self.ezselect_all({"IMAGETYP": "FLAT", "SLIT": slit})
             ind_thar = self.ezselect_all({"IMAGETYP": "THAR", "SLIT": slit})
+
+            if any(_ is None for _ in [ind_bias, ind_flat, ind_thar]):
+                print("@Song: skipping slit[{}] due to lack of calibration data ...".format(slit))
+
             ind_star = self.ezselect_all({"IMAGETYP": "STAR", "SLIT": slit})
             ind_flati2 = self.ezselect_all({"IMAGETYP": "FLATI2", "SLIT": slit})
             ind_stari2 = self.ezselect_all({"IMAGETYP": "STARI2", "SLIT": slit})
@@ -959,12 +970,12 @@ class Song(Table):
         return slits
 
 
-def _try_trace_apertures(flat, sigma_):
-    try:
-        ap = Aperture.trace(flat, method="canny", sigma=sigma_, verbose=False)
-        return ap.n_ap
-    except Exception as e_:
-        return -1
+# def _try_trace_apertures(flat, sigma_):
+#     try:
+#         ap = Aperture.trace(flat, method="canny", sigma=sigma_, verbose=False)
+#         return ap.n_ap
+#     except Exception as e_:
+#         return -1
 
 
 # used in draw()
