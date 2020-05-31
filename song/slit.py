@@ -76,7 +76,7 @@ class Slit:
     ap = None
 
     # wavelength solutions
-    tws = None
+    tws = table.Table([])
 
     # reduction parameters for SONG-China
     # 1. read images
@@ -183,18 +183,20 @@ class Slit:
         print("Done!")
         return
 
-    def proc_thar(self, fp, add=True, ipcprofile=None):
+    def proc_thar(self, fp, clear=True, ipcprofile=None):
         if isinstance(fp, list):
             # multiple thar
-            self.clear_tws()
             print("@Slit[{}]: cleared tws ...".format(self.slit))
             if ipcprofile is None:
-                print("@Slit[{}]: processing {} thar sequentially ...".format(
-                    self.slit, len(fp)))
-                for fp_ in fp:
-                    print("@Slit[{}]: processing {}...".format(self.slit, fp_))
-                    self.proc_thar(fp_, add=True)
+                print("@Slit[{}]: processing {} thar sequentially ...".format(self.slit, len(fp)))
+                tws = [self.proc_thar(fp_, clear=True) for fp_ in fp]
+                if clear:
+                    self.clear_tws()
+                for _ in tws:
+                    self.tws.add_row(_)
+                self.tws.sort("jdmid")
             else:
+                # use ipcluster
                 rc = Client(profile=ipcprofile)
                 print("@Slit[{}]: dispatching {} thar to ipcluster (profile={}, nproc={}) ...".format(
                     self.slit, len(fp), ipcprofile, len(rc.ids)))
@@ -202,9 +204,14 @@ class Slit:
                 dv.block = True
                 dv.push({"this_slit": self})
                 dv.scatter("fp", fp)
-                dv.execute("this_slit.proc_thar(fp, add=True)")
-                dv.execute("tws = this_slit.tws")
-                self.tws = table.vstack(dv.gather("tws"))
+                dv.execute("tws = [this_slit.proc_thar(_, clear=True) for _ in fp]")
+                if clear:
+                    self.clear_tws()
+                # print(self.tws, dv.gather("tws"))
+                # print(self.tws.colnames)
+                for _ in dv.gather("tws"):
+                    # print(_.keys())
+                    self.tws.add_row(_)
                 self.tws.sort("jdmid")
                 dv.execute("%reset -f")
         else:
@@ -240,10 +247,11 @@ class Slit:
             x = tlines["line_x_ccf"]  # line_x_ccf/line_x_gf
             y = tlines["order"]
             z = tlines["line"]
-
             pf1, pf2, indselect = thar.grating_equation(x, y, z, **self.kwargs_grating)
             tlines.add_column(table.Column(indselect, "indselect"))
             nlines = np.sum(indselect)
+            # mpflux
+            mpflux = np.median(tlines["line_peakflux"][tlines["indselect"]])
             # rms
             rms = np.std((pf2.predict(x, y) - z)[indselect])
             # predict wavelength solution
@@ -251,29 +259,31 @@ class Slit:
             mx, morder = np.meshgrid(np.arange(norder), np.arange(nx))
             wave_solu = pf2.predict(mx, morder)
 
-            if add:
-                # add this thar to list
-                if fp in self.tws["fp"]:
-                    # overwrite record
-                    idx = np.int(np.where(fp == self.tws["fp"])[0])
-                    self.tws.remove_row(idx)
-                    self.tws.add_row([fp, jdmid, exptime, wave_init, wave_solu, tlines, nlines, rms, pf1, pf2])
-                    self.tws.sort("jdmid")
-                else:
-                    self.tws.add_row([fp, jdmid, exptime, wave_init, wave_solu, tlines, nlines, rms, pf1, pf2])
-                    self.tws.sort("jdmid")
-            return
+            # result
+            calibration_dict = OrderedDict(
+                fp=fp, jdmid=jdmid, exptime=exptime, wave_init=wave_init, wave_solu=wave_solu,
+                tlines=tlines, nlines=nlines, rms=rms, pf1=pf1, pf2=pf2, mpflux=mpflux)
+            # clear if necessary
+            if clear:
+                self.clear_tws()
+            # add this thar to list
+            if fp in self.tws["fp"]:
+                # overwrite record
+                idx = np.int(np.where(fp == self.tws["fp"])[0])
+                self.tws.remove_row(idx)
+            self.tws.add_row(calibration_dict)
+            self.tws.sort("jdmid")
+            return calibration_dict
 
     def proc_star(self, fp, write=True, ipcprofile=None, prefix="tstar"):
         if isinstance(fp, list):
             # multiple star
             if ipcprofile is None:
-                # sequentially
+                # use joblib
                 print("@Slit[{}]: processing {} star sequentially ...".format(self.slit, len(fp)))
                 results = []
                 for fp_ in fp:
-                    print("@Slit[{}]: processing {}...".format(self.slit, fp_))
-                    results.append(self.proc_star(fp_))
+                    results.append(self.proc_star(fp_, write=True, prefix=prefix))
                 # check invalid results
                 for fp_ in results:
                     if prefix not in fp_:
@@ -281,7 +291,7 @@ class Slit:
                 return results
 
             else:
-                # parallel
+                # use ipcluster
                 rc = Client(profile=ipcprofile)
                 print("@Slit[{}]: dispatching {} star to ipcluster (profile={}, nproc={}) ...".format(
                     self.slit, len(fp), ipcprofile, len(rc.ids)))
@@ -294,13 +304,13 @@ class Slit:
                 # dv.execute("tws = this_slit.tws")
                 # self.tws = table.vstack(dv.gather("tws"))
                 # self.tws.sort("jdmid")
-                print("@Slit[{}]: Done!)".format(self.slit))
+                print("@Slit[{}]: Done!".format(self.slit))
                 print("saved to files:")
-                print("========")
+                print("===========================================")
                 results = dv.gather("fps_out")
                 for fp_ in results:
                     print(fp_)
-                print("========")
+                print("===========================================")
                 dv.execute("%reset -f")
                 # check invalid results
                 for fp_ in results:
@@ -309,7 +319,6 @@ class Slit:
                 return results
         else:
             # single star
-
             try:
                 # 1.read star
                 hdr = self.read_header(fp)
@@ -398,9 +407,9 @@ class Slit:
 
     def clear_tws(self):
         """ clear ThAr Wavelength Solutions (tws) """
-        self.tws = table.Table(data=[[], [], [], [], [], [], [], [], [], []],
-                               names=["fp", "jdmid", "exptime", "wave_init", "wave_solu", "tlines", "nlines", "rms", "pf1", "pf2", ],
-                               dtype=[object, object, object, object, object, object, object, object, object, object])
+        self.tws = table.Table(data=[[], [], [], [], [], [], [], [], [], [], []],
+                               names=["fp", "jdmid", "exptime", "wave_init", "wave_solu", "tlines", "nlines", "rms", "pf1", "pf2", "mpflux"],
+                               dtype=[object, object, object, object, object, object, object, object, object, object, object])
         return
 
     def ignore_warnings(self):
@@ -413,4 +422,8 @@ class Slit:
         elif self.node == "tenerife":
             print(SLITINFO_TENERIFE)
 
-
+    @staticmethod
+    def proc_thar_static(slit, fp):
+        # proc single thar
+        print("@Slit[{}]: processing {} thar sequentially ...".format(slit.slit, len(fp)))
+        return slit.proc_thar(fp, add=False)

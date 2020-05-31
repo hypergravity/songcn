@@ -241,9 +241,11 @@ def find_lines(wave_init, thar_obs, thar_line_list, npix_chunk=20):
                     pccf = ccfmax(this_line_x_init, this_line_xcoord, this_line_thar, width=1.2, method="Nelder-Mead")
                     this_line_x_ccf = np.float(pccf.x)
                     this_line_wave_init_ccf = np.interp(this_line_x_ccf, xcoord, this_wave_init)
+                    this_line_peakflux = np.interp(this_line_x_ccf, this_line_xcoord, this_line_thar)
                 except:
                     this_line_x_ccf = np.nan
                     this_line_wave_init_ccf = np.nan
+                    this_line_peakflux = np.nan
 
                 # gather results
                 this_result = dict(
@@ -258,7 +260,9 @@ def find_lines(wave_init, thar_obs, thar_line_list, npix_chunk=20):
                     # ccf
                     line_x_ccf=this_line_x_ccf,
                     line_wave_init_ccf=this_line_wave_init_ccf,
-                    line_base=this_line_base
+                    line_base=this_line_base,
+                    # peakflux
+                    line_peakflux=this_line_peakflux
                 )
                 # np.array([iorder, this_line_xcenter, this_line, line_wave_gf, line_wave_ccf,
                 #           this_line_base, popt[0]/np.sqrt(2.*np.pi)/popt[2],

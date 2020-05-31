@@ -32,6 +32,7 @@ The SONG-China project defines file names with local time. i.e.,
 import glob
 import os
 from collections import OrderedDict
+from datetime import datetime
 
 import joblib
 import numpy as np
@@ -509,8 +510,8 @@ class Song(Table):
         # if no image found
         n_matched = np.sum(ind_match)
         if n_matched < 1:
-            print("@SONG: no images matched!")
-            return None
+            # print("@SONG: no images matched!")
+            return []
 
         sub_match = np.where(ind_match)[0]
         # determine the number of images to select
@@ -901,9 +902,11 @@ class Song(Table):
 
         return star_fn
 
-    def daily(self, proc_slits="all", sharebias=True, star=True, stari2=False, flati2=False, ipcprofile="default"):
+    def daily(self, proc_slits="all", sharebias=True, star=True, stari2=False, flati2=False,
+              ipcprofile="default"):
         """ daily pipeline """
         joblib.dump(self, "{}/{}_song.dump".format(self.extdir, self.date))
+        print("[{}] starting daily pipeline ...".format(datetime.now()))
         print("===========================================")
         print("@Song: unique slits are ", self.unique_slits)
         print("===========================================")
@@ -938,6 +941,16 @@ class Song(Table):
             ind_star = self.ezselect_all({"IMAGETYP": "STAR", "SLIT": slit})
             ind_flati2 = self.ezselect_all({"IMAGETYP": "FLATI2", "SLIT": slit})
             ind_stari2 = self.ezselect_all({"IMAGETYP": "STARI2", "SLIT": slit})
+
+            sinfo = "@SONG: will process "
+            if star:
+                sinfo += " star [{}]".format(len(ind_star))
+            if flati2:
+                sinfo += " flati2 [{}]".format(len(ind_flati2))
+            if stari2:
+                sinfo += " stari2 [{}]".format(len(ind_stari2))
+            print(sinfo)
+
             if ind_bias is None or ind_flat is None or ind_thar is None:
                 # need calibration images!
                 continue
