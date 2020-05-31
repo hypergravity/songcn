@@ -262,7 +262,7 @@ class Slit:
             # result
             calibration_dict = OrderedDict(
                 fp=fp, jdmid=jdmid, exptime=exptime, wave_init=wave_init, wave_solu=wave_solu,
-                tlines=tlines, nlines=nlines, rms=rms, pf1=pf1, pf2=pf2, mpflux=mpflux)
+                tlines=tlines, nlines=nlines, rms=rms, pf1=pf1, pf2=pf2, mpflux=mpflux, thar_obs=thar_obs)
             # clear if necessary
             if clear:
                 self.clear_tws()
@@ -407,9 +407,10 @@ class Slit:
 
     def clear_tws(self):
         """ clear ThAr Wavelength Solutions (tws) """
-        self.tws = table.Table(data=[[], [], [], [], [], [], [], [], [], [], []],
-                               names=["fp", "jdmid", "exptime", "wave_init", "wave_solu", "tlines", "nlines", "rms", "pf1", "pf2", "mpflux"],
-                               dtype=[object, object, object, object, object, object, object, object, object, object, object])
+        self.tws = table.Table(
+            data=[[], [], [], [], [], [], [], [], [], [], [], []],
+            names=["fp", "jdmid", "exptime", "wave_init", "wave_solu", "tlines", "nlines", "rms", "pf1", "pf2", "mpflux", "thar_obs"],
+            dtype=[object, object, object, object, object, object, object, object, object, object, object, object])
         return
 
     def ignore_warnings(self):
