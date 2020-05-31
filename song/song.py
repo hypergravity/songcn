@@ -973,7 +973,7 @@ class Song(Table):
                 this_slit.proc_star(fps_flati2, ipcprofile=ipcprofile, prefix="tflati2")
             # stari2
             if stari2 and ind_stari2 is not None:
-                fps_stari2 = list(self["fps"][ind_star])
+                fps_stari2 = list(self["fps"][ind_stari2])
                 this_slit.proc_star(fps_stari2, ipcprofile=ipcprofile, prefix="tstari2")
             joblib.dump(this_slit, "{}/{}_slit{}.dump".format(self.extdir, self.date, slit))
             slits.append(this_slit)
