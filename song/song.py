@@ -182,6 +182,9 @@ class Song(Table):
             jds = np.array([fp2jd(fp) for fp in fps])
             fps = fps[(jds >= datejd0) & (jds < datejd0 + 1)]
 
+        if len(fps) == 0:
+            return Song()
+
         # scan files
         print("@SONG: scanning files ...")
         s = Song(scan_files(fps, n_jobs=n_jobs, verbose=verbose))
