@@ -23,16 +23,17 @@ Aims
 
 """
 
-
-import glob
+import datetime
 import sys
+import time
 
 import numpy as np
 from astropy.io import fits
 from astropy.nddata import CCDData
 from astropy.table import Table, Column
-from tqdm import trange
+from ipyparallel import Client
 from joblib import Parallel, delayed
+from tqdm import trange
 
 
 def unique_type(data):
@@ -224,3 +225,16 @@ def scan_flux90(t, ind_scan=None, ind_type='bool', pct=90,
 
 def scan_flux90_(fp, pct, **kwargs):
     return np.nanpercentile(CCDData.read(fp, **kwargs), pct)
+
+
+def keep_ipc_alive(profile="default", interval=60, maxiter=10000):
+    dv = Client(profile=profile)[:]
+    c = 0
+    while True:
+        c += 1
+        print("@keep_ipc_alive: {} ".format(datetime.datetime.now()))
+        dv.execute("import os")
+        time.sleep(interval)
+        if c > maxiter:
+            break
+    return
