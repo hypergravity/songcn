@@ -160,7 +160,6 @@ print(spec.colnames)
 # 'wave_rms'        float rms of the ThAr calibration
 ```
  
-The Slit object contains bg, tws etc...
-slit.tws has colnames: 
-`['fp', 'jdmid', 'exptime', 'wave_init', 'wave_solu', 'tlines', 'nlines', 'rms', 'pf1', 'pf2']`
+The Slit object contains bg, tws etc... **slit.tws** has colnames:\
+ ["fp", "jdmid", "exptime", "wave_init", "wave_solu", "tlines", "nlines", "rms", "pf1", "pf2", "mpflux", "thar_obs"]
 
