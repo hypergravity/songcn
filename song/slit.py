@@ -257,7 +257,7 @@ class Slit:
             # predict wavelength solution
             nx, norder = thar_obs.shape
             mx, morder = np.meshgrid(np.arange(norder), np.arange(nx))
-            wave_solu = pf2.predict(mx, morder)
+            wave_solu = pf2.predict(mx, morder)  # polynomial fitter
 
             # result
             calibration_dict = OrderedDict(
@@ -367,7 +367,7 @@ class Slit:
                 if not write:
                     return tstar
                 assert os.path.exists(self.extdir)
-                fp_output = "{}/{}_{}".format(self.extdir, prefix, os.path.basename(fp))
+                fp_output = "{}/slit{}_{}_{}".format(self.extdir, self.slit, prefix, os.path.basename(fp))
                 print("@Slit[{}]: saving to {} ...".format(self.slit, fp_output))
                 tstar.write(fp_output, overwrite=True)
                 return fp_output
