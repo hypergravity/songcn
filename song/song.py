@@ -942,7 +942,7 @@ class Song(Table):
             ind_flati2 = self.ezselect_all({"IMAGETYP": "FLATI2", "SLIT": slit})
             ind_stari2 = self.ezselect_all({"IMAGETYP": "STARI2", "SLIT": slit})
 
-            sinfo = "@SONG: will process "
+            sinfo = "@SONG-slit[{}]: will process ".format(this_slit.slit)
             if star:
                 sinfo += " star [{}]".format(len(ind_star))
             if flati2:
