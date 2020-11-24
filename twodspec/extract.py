@@ -361,7 +361,8 @@ def extract_sum(ap_im, ap_im_xx_cor, ap_width=15):
 ####################################
 
 def extract_all(im, ap, n_chunks=8, profile_oversample=10, profile_smoothness=1e-2,
-                num_sigma_clipping=10, gain=1., ron=0, n_jobs=-1):
+                num_sigma_clipping=10, gain=1., ron=0, n_jobs=-1,
+                verbose=False, backend="multiprocessing"):
     """ extract all apertures with both simple & profile extraction
 
     Parameters
@@ -384,6 +385,10 @@ def extract_all(im, ap, n_chunks=8, profile_oversample=10, profile_smoothness=1e
         The readout noise of CCD. The default is 0.
     n_jobs : int, optional
         The number of processes launched. The default is -1.
+    verbose :
+        joblib verbose
+    backend :
+        joblib backend
 
     Returns
     -------
@@ -392,7 +397,7 @@ def extract_all(im, ap, n_chunks=8, profile_oversample=10, profile_smoothness=1e
 
     """
     # extract all apertures in parallel
-    rs = joblib.Parallel(n_jobs=n_jobs, verbose=False)(joblib.delayed(extract_aperture)(
+    rs = joblib.Parallel(n_jobs=n_jobs, verbose=verbose, backend=backend)(joblib.delayed(extract_aperture)(
         im, ap.ap_center_interp[i], n_chunks=n_chunks, profile_oversample=profile_oversample,
         profile_smoothness=profile_smoothness, num_sigma_clipping=num_sigma_clipping, gain=gain, ron=ron)
                                                    for i in range(ap.nap))
@@ -436,7 +441,8 @@ def local_filter1(x, kw=5, method="mean"):
 
 
 def make_normflat(im, ap, max_dqe=0.04, min_snr=20, smooth_blaze=5, n_chunks=8,
-                  profile_oversample=10, profile_smoothness=1e-2, num_sigma_clipping=20, gain=1., ron=0, n_jobs=-1):
+                  profile_oversample=10, profile_smoothness=1e-2, num_sigma_clipping=20, gain=1., ron=0,
+                  n_jobs=-1, verbose=False, backend="multiprocessing"):
     """ normalize FLAT
 
     Parameters
@@ -465,18 +471,23 @@ def make_normflat(im, ap, max_dqe=0.04, min_snr=20, smooth_blaze=5, n_chunks=8,
         The readout noise. The default is 0.
     n_jobs : int, optional
         The number of processes launched. The default is -1.
+    verbose:
+        defaults to False
+    backend:
+        defaults to multiprocessing
 
     Returns
     -------
     blaze, im_norm : ndarray
         The blaze functions and sensitivity image.
 
+
     """
     im_recon = np.zeros_like(im)
     blaze = []
 
     # extract in parallel
-    rs = joblib.Parallel(n_jobs=n_jobs,verbose=False)(joblib.delayed(extract_aperture)(
+    rs = joblib.Parallel(n_jobs=n_jobs, verbose=verbose, backend=backend)(joblib.delayed(extract_aperture)(
         im, ap.ap_center_interp[i], n_chunks=n_chunks, ap_width=ap.ap_width,
         profile_oversample=profile_oversample,
         profile_smoothness=profile_smoothness,
