@@ -314,7 +314,8 @@ class Aperture(object):
         return blaze, im_norm
 
     def extract_all(self, im, n_chunks=8, profile_oversample=10, profile_smoothness=1e-2,
-                    num_sigma_clipping=10, gain=1., ron=0, n_jobs=-1):
+                    num_sigma_clipping=10, gain=1., ron=0, n_jobs=-1,
+                    verbose=False, backend="multiprocessing"):
         """ extract all apertures with both simple & profile extraction
 
         Parameters
@@ -335,6 +336,10 @@ class Aperture(object):
             The readout noise of CCD. The default is 0.
         n_jobs : int, optional
             The number of processes launched. The default is -1.
+        verbose:
+            defaults to False
+        backend:
+            joblib backend
 
         Returns
         -------
@@ -343,8 +348,9 @@ class Aperture(object):
 
         """
 
-        return extract_all(im, self, n_chunks=8, profile_oversample=10, profile_smoothness=1e-2,
-                           num_sigma_clipping=10, gain=1., ron=0, n_jobs=n_jobs)
+        return extract_all(im, self, n_chunks=n_chunks, profile_oversample=profile_oversample,
+                           profile_smoothness=profile_smoothness, num_sigma_clipping=num_sigma_clipping,
+                           gain=gain, ron=ron, n_jobs=n_jobs, verbose=verbose, backend=backend)
 
     def extract_aperture(self, iap, im, n_chunks=8, profile_oversample=10, profile_smoothness=1e-2,
                          num_sigma_clipping=5., gain=1., ron=0):
