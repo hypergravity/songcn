@@ -275,9 +275,12 @@ class Slit:
             self.tws.sort("jdmid")
             return calibration_dict
 
-    def proc_star(self, fp, write=True, ipcprofile=None, prefix="tstar"):
+    def proc_star(self, fp, write=True, ipcprofile=None, prefix="tstar", push=True):
         if isinstance(fp, list):
             # multiple star
+            if len(fp) == 0:
+                return []
+
             if ipcprofile is None:
                 # use joblib
                 print("@Slit[{}]: processing {} star sequentially ...".format(self.slit, len(fp)))
@@ -293,11 +296,12 @@ class Slit:
             else:
                 # use ipcluster
                 rc = Client(profile=ipcprofile)
-                print("@Slit[{}]: dispatching {} star to ipcluster (profile={}, nproc={}) ...".format(
+                print("@Slit[{}]: dispatching {} files to ipcluster (profile={}, nproc={}) ...".format(
                     self.slit, len(fp), ipcprofile, len(rc.ids)))
                 dv = rc.direct_view()
                 dv.block = True
-                dv.push({"this_slit": self, "prefix": prefix})
+                if push:
+                    dv.push({"this_slit": self, "prefix": prefix})
                 dv.scatter("fp", fp)
                 dv.execute("fps_out = this_slit.proc_star(fp, prefix=prefix)")
                 # dv.execute()
@@ -311,7 +315,8 @@ class Slit:
                 for fp_ in results:
                     print(fp_)
                 print("===========================================")
-                dv.execute("%reset -f")
+                # dv.execute("%reset -f")
+                # dv.execute("del()")
                 # check invalid results
                 for fp_ in results:
                     if prefix not in fp_:
