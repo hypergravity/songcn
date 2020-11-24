@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name='songcn',
-    version='0.0.8',
+    version='0.0.9',
     author='Bo Zhang',
     author_email='bozhang@nao.cas.cn',
     description='The SONG-China data processing pipeline.', # short description
@@ -13,7 +13,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url='http://github.com/hypergravity/songcn',
     packages=setuptools.find_packages(),
-    #packages=['song', 'twodspec'],
+    # packages=['song', 'twodspec'],
     license='MIT',
     classifiers=["Development Status :: 5 - Production/Stable",
                  "Intended Audience :: Science/Research",
@@ -28,7 +28,7 @@ setuptools.setup(
                            'data/*'],
                   "": ["LICENSE"]
                   },
-    #include_package_data=True, commented to include data!
+    # include_package_data=True, commented to include data!
     requires=['numpy', 'scipy', 'matplotlib', 'astropy',  # 'skimage',
               'joblib', 'ipyparallel', 'laspec']
 )
