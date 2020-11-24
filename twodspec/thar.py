@@ -169,7 +169,7 @@ def gauss(x, a, b, c):
     return a / np.sqrt(2. * np.pi) / c * np.exp(-0.5 * ((x - b) / c) ** 2.)
 
 
-def find_lines(wave_init, thar_obs, thar_line_list, npix_chunk=20):
+def find_lines(wave_init, thar_obs, thar_line_list, npix_chunk=20, ccf_kernel_width=2):
     """
     Find emission lines in ThAr spectrum.
 
@@ -238,7 +238,7 @@ def find_lines(wave_init, thar_obs, thar_line_list, npix_chunk=20):
                     this_line_wave_init_gf = np.nan
                 # 2. CCF method
                 try:
-                    pccf = ccfmax(this_line_x_init, this_line_xcoord, this_line_thar, width=1.2, method="Nelder-Mead")
+                    pccf = ccfmax(this_line_x_init, this_line_xcoord, this_line_thar, width=ccf_kernel_width, method="Nelder-Mead")
                     this_line_x_ccf = np.float(pccf.x)
                     this_line_wave_init_ccf = np.interp(this_line_x_ccf, xcoord, this_wave_init)
                     this_line_peakflux = np.interp(this_line_x_ccf, this_line_xcoord, this_line_thar)
@@ -277,7 +277,7 @@ def find_lines(wave_init, thar_obs, thar_line_list, npix_chunk=20):
     return tlines
 
 
-def grating_equation(x, y, z, deg=(4, 10), nsigma=3, min_select=None):
+def grating_equation(x, y, z, deg=(4, 10), nsigma=3, min_select=None, verbose=True):
     """
     Fit a grating equation (2D polynomial function) to data
 
@@ -295,6 +295,8 @@ def grating_equation(x, y, z, deg=(4, 10), nsigma=3, min_select=None):
         The data outside of the nsigma*sigma radius is rejected iteratively. The default is 3.
     min_select : int or None, optional
         The minimal number of selected lines. The default is None.
+    verbose :
+        if True, print info
 
     Returns
     -------
@@ -321,15 +323,16 @@ def grating_equation(x, y, z, deg=(4, 10), nsigma=3, min_select=None):
             # continue to reject lines
             indselect &= np.abs(z_res) < nsigma * sigma
             iiter += 1
-        print("@grating_equation: iter-{} \t{} lines kicked, {} lines left, rms={:.5f} A".format(
-            iiter, n_reject, np.sum(indselect), sigma))
+        if verbose:
+            print("@grating_equation: iter-{} \t{} lines kicked, {} lines left, rms={:.5f} A".format(
+                iiter, n_reject, np.sum(indselect), sigma))
     pf1.rms = sigma
 
     # pf2
     pf2 = Poly2DFitter(x[indselect], y[indselect], z[indselect], deg=deg, pw=2, robust=False)
     pf2.rms = np.std(pf2.predict(x[indselect], y[indselect]) - z[indselect])
-
-    print("@grating_equation: {} iterations, rms = {:.5f}/{:.5f} A".format(iiter, pf1.rms, pf2.rms))
+    if verbose:
+        print("@grating_equation: {} iterations, rms = {:.5f}/{:.5f} A".format(iiter, pf1.rms, pf2.rms))
     return pf1, pf2, indselect
 
 
