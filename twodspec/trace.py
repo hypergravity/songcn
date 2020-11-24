@@ -316,7 +316,7 @@ def box_kernel(fullwidth=10):
     return kernel
 
 
-def trace_naive_max(flat, sigma=7., maxdev=0):
+def trace_naive_max(flat, sigma=7., maxdev=0, irow_start=None):
     """ trace aperture using naive method -- along local max
 
     Parameters
@@ -327,6 +327,8 @@ def trace_naive_max(flat, sigma=7., maxdev=0):
         The sigma of Gaussian kernel. The default is 7.
     maxdev : float, optional
         The max deviation of local max while tracing. The default is 0.
+    irow_start :
+        The number of the starting row
 
     Returns
     -------
@@ -336,7 +338,10 @@ def trace_naive_max(flat, sigma=7., maxdev=0):
     """
     flat = np.asarray(flat, float)
     n_row, n_col = flat.shape
-    i_row_center = np.int(n_row / 2)
+    if irow_start is None:
+        i_row_center = np.int(n_row / 2)
+    else:
+        i_row_center = irow_start
 
     # smooth flat along spacial axis
     flat_smooth = np.zeros_like(flat)
