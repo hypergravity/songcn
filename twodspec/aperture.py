@@ -201,20 +201,21 @@ class Aperture(object):
         ap_center_chebcoef = []
         for i in range(nap):
             # for upper
+            ind_fit = self.ap_center[i] > -1
             this_chebcoef = np.polynomial.chebyshev.chebfit(
-                self.y, self.ap_upper[i], deg=deg)
+                self.y[ind_fit], self.ap_upper[i][ind_fit], deg=deg)
             ap_upper_chebcoef.append(this_chebcoef)
             ap_upper_interp.append(
                 np.polynomial.chebyshev.chebval(ap_col_interp, this_chebcoef))
             # for lower
             this_chebcoef = np.polynomial.chebyshev.chebfit(
-                self.y, self.ap_lower[i], deg=deg)
+                self.y[ind_fit], self.ap_lower[i][ind_fit], deg=deg)
             ap_lower_chebcoef.append(this_chebcoef)
             ap_lower_interp.append(
                 np.polynomial.chebyshev.chebval(ap_col_interp, this_chebcoef))
             # for center
             this_chebcoef = np.polynomial.chebyshev.chebfit(
-                self.y, self.ap_center[i], deg=deg)
+                self.y[ind_fit], self.ap_center[i][ind_fit], deg=deg)
             ap_center_chebcoef.append(this_chebcoef)
             ap_center_interp.append(
                 np.polynomial.chebyshev.chebval(ap_col_interp, this_chebcoef))
