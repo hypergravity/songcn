@@ -1,0 +1,19 @@
+---
+image:
+  rotation: 1
+
+aperture:
+  trace:
+    ap_width: 15
+
+  extract:
+    a: 1
+
+calibration:
+  std: 1
+
+iodine:
+  a: 1
+
+rv:
+  a: 1

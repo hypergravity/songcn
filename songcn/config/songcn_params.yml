@@ -1,0 +1,10 @@
+---
+IMGTYPE:
+  - BIAS
+  - FLAT
+  - FLATI2
+  - THAR
+  - THARI2
+  - STAR
+  - STARI2
+  - TEST
