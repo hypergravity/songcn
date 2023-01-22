@@ -45,6 +45,7 @@ class PV2002:
         ((n_width+1) * osr,), the optimally extracted spatial profile in the current iteration.
 
     """
+
     def __init__(self, S_lambda_x, remainders, osr=10, Lrel=1, zero_wing=1, clip_sigma=3, xx=None, yy=None):
         # important attributes
         self.xx = xx
@@ -321,6 +322,8 @@ class PV2002:
                        vmin=np.min(self.S_rec),
                        vmax=np.max(self.S_rec))
         plt.colorbar(I, ax=ax0)
+        ax0.set_xlabel("Rectified $X$ [pixel]")
+        ax0.set_ylabel("$Y$ [pixel]")
 
         ax1 = fig.add_subplot(3, 2, 2, title="Reconstructed image")
         I = ax1.imshow(
@@ -328,6 +331,8 @@ class PV2002:
             vmax=np.max(self.S_rec)
         )
         plt.colorbar(I, ax=ax1)
+        ax1.set_xlabel("Rectified $X$ [pixel]")
+        ax1.set_ylabel("$Y$ [pixel]")
 
         ax0 = fig.add_subplot(3, 2, 3, projection='3d', title="Input image")
         ax1 = fig.add_subplot(3, 2, 4, projection='3d', title="Reconstructed image")
@@ -337,13 +342,13 @@ class PV2002:
         ax1.plot_surface(
             self.xx, self.yy, self.S_rec, cmap=plt.cm.jet, vmin=np.min(self.S_rec), vmax=np.max(self.S_rec),
         )
-        ax0.set_ylabel("Spatial direction")
-        ax0.set_xlabel("Dispersion direction")
-        ax1.set_ylabel("Spatial direction")
-        ax1.set_xlabel("Dispersion direction")
+        ax0.set_ylabel("$X$ (spatial direction) [pixel]")
+        ax0.set_xlabel("$Y$ (dispersion direction) [pixel]")
+        ax1.set_ylabel("$X$ (spatial direction) [pixel]")
+        ax1.set_xlabel("$Y$ (dispersion direction) [pixel]")
         ax0.set_zlim(ax1.get_zlim())
-        ax0.set_zlabel("Flux [ADU]")
-        ax1.set_zlabel("Flux [ADU]")
+        ax0.set_zlabel("Counts [ADU]")
+        ax1.set_zlabel("Counts [ADU]")
         ax0.view_init(30, -10, 0)
         ax1.view_init(30, -10, 0)
 
@@ -360,6 +365,8 @@ class PV2002:
             ax_g.plot(np.arange(len(g)) / self.osr - .5 + .5 / self.osr,  # this is tricky
                       g[::-1] + (self.n_iter - 1 - i) * profile_shift)
             print("sum(g): ", g.sum())
+        ax_g.set_xlabel("Corrected $X$ [pixel]")
+        ax_g.set_ylabel("Profile density $\\times$ Over sampling rate")
 
         # plot spectrum
         ax_f = fig.add_subplot(3, 2, 6, title="Extracted spectrum")
@@ -370,6 +377,8 @@ class PV2002:
                 plt.plot(f, label=f"Iter {i}")
             print("median(f): ", np.median(f))
         ax_f.legend()
+        ax_f.set_xlabel("$\\lambda$ [pixel]")
+        ax_f.set_ylabel("Counts [ADU]")
 
         fig.tight_layout()
         plt.show()
@@ -409,7 +418,9 @@ def test_pv2002():
 
     pv.reduce(n_iter=10, tol_f_lambda=1e-3, tol_g_j=1e-10)
     fig = pv.plot_result()
+    return fig
 
 
 if __name__ == "__main__":
     test_downsample_spectral_profile()
+    fig = test_pv2002()
