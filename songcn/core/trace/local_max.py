@@ -8,7 +8,16 @@ from scipy.signal import argrelextrema
 
 LocalMax = namedtuple(
     typename="LocalMax",
-    field_names=["num", "max_ind", "max_val", "max_val_interp", "max_snr", "min_ind", "side_ind", "side_mask"]
+    field_names=[
+        "num",  # number of maxima
+        "max_ind",  # index of maxima
+        "max_val",  # value of maxima
+        "max_val_interp",  # value interpolated from neighboring minima
+        "max_snr",  # SNR of maxima (max/max_val_interp)
+        "min_ind",  # index of minima
+        "side_ind",  # index of two sides
+        "side_mask",  # True if out of bounds
+    ]
 )
 
 
@@ -19,11 +28,20 @@ def generate_pulse_kernel(kernel_width=15):
     return kernel
 
 
-def find_local_max(central_slice, kernel_width=15):
-    """ Find local max in 1D array. """
-    central_slice_convolved = np.convolve(central_slice, generate_pulse_kernel(kernel_width=kernel_width), mode="same")
+def find_local_max(arr, kernel_width=15):
+    """ Find local max in 1D array.
+
+    Parameters
+    ----------
+    arr : np.array
+        The 1D array.
+    kernel_width : int
+        The kernel width in number of pixels.
+
+    """
+    arr_convolved = np.convolve(arr, generate_pulse_kernel(kernel_width=kernel_width), mode="same")
     # find local max using scipy.signal.argrelextrema
-    ind_local_max = argrelextrema(central_slice_convolved, np.greater_equal, order=kernel_width, mode='clip')[0]
+    ind_local_max = argrelextrema(arr_convolved, np.greater_equal, order=kernel_width, mode='clip')[0]
     logging.info(f"{len(ind_local_max)} maxima found")
     # interpolate for local min
     ind_local_max_delta = np.diff(ind_local_max) / 2
@@ -39,16 +57,16 @@ def find_local_max(central_slice, kernel_width=15):
         ind_local_min_derived[:-1],
         ind_local_min_derived[1:]
     ])
-    ind_two_sides_mask = np.logical_or(ind_two_sides < 0, ind_two_sides > len(central_slice) - 1)
-    ind_two_sides_valid = np.where(ind_two_sides_mask, 0, ind_two_sides)
-    # estimate SNR of local max
+    ind_two_sides_mask = np.logical_or(ind_two_sides < 0, ind_two_sides > len(arr) - 1)
+    ind_two_sides_valid = np.where(ind_two_sides_mask, 0, ind_two_sides)  # do not go out of bounds
+    # estimate SNR of local max, clip out-of-bounds values
     interp_val_local_max = np.ma.MaskedArray(
-        data=central_slice_convolved[ind_two_sides_valid],
+        data=arr_convolved[ind_two_sides_valid],
         mask=ind_two_sides_mask,
     ).mean(axis=0)
     assert interp_val_local_max.mask.sum() == 0
     interp_val_local_max = interp_val_local_max.data
-    val_local_max = central_slice_convolved[ind_local_max]
+    val_local_max = arr_convolved[ind_local_max]
     snr_local_max = val_local_max / interp_val_local_max
     return LocalMax(
         num=len(ind_local_max),
@@ -104,7 +122,7 @@ def trace_one_aperture(img, init_pos=(1000, 993), extra_bin=1, kernel_width=10, 
     n_row, n_col = img.shape
     init_row, init_col = init_pos
     if kernel_width is not None:
-        # convolve image slice by slice
+        # convolve image slice by slice (row by row)
         img = np.array(
             [
                 np.convolve(
@@ -178,11 +196,13 @@ if __name__ == "__main__":
     central_ind = int(img.shape[0] / 2)
     central_slice = img[central_ind:central_ind + 10].sum(axis=0)
     for kernel_width in np.arange(5, 30):
-        localmax = find_local_max(central_slice=central_slice, kernel_width=kernel_width)
-        print(f"kernel_width: {kernel_width}, number of max: {localmax.num}, "
-              f"median SNR: {np.median(localmax.max_snr):.2f}, mean SNR: {np.mean(localmax.max_snr):.2f}")
+        localmax = find_local_max(arr=central_slice, kernel_width=kernel_width)
+        print(
+            f"kernel_width: {kernel_width}, number of max: {localmax.num}, "
+            f"median SNR: {np.median(localmax.max_snr):.2f}, mean SNR: {np.mean(localmax.max_snr):.2f}"
+        )
 
-    localmax = find_local_max(central_slice=central_slice, kernel_width=15)
+    localmax = find_local_max(arr=central_slice, kernel_width=15)
 
     fig, ax = plt.subplots(1, 1, figsize=(8, 8))
     ax.imshow(np.log10(img), extent=(-.5, 2047.5, -.5, 2047.5,), origin="lower")
@@ -190,5 +210,5 @@ if __name__ == "__main__":
         ap_col, ap_mask = trace_one_aperture(
             img, init_pos=(central_ind, localmax.max_ind[i_ap]), extra_bin=1, kernel_width=15, maxdev=3)
         ax.plot(ap_col, np.arange(img.shape[0]))
-        print(f"i_ap={i_ap}, masksum={sum(ap_mask)}")
+        print(f"i_ap = {i_ap}, masksum = {sum(ap_mask)}")
     plt.show()
