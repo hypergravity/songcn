@@ -8,7 +8,7 @@ setuptools.setup(
     version='0.1.0',
     author='Bo Zhang',
     author_email='bozhang@nao.cas.cn',
-    description='The SONG-China data processing pipeline.', # short description
+    description='The SONG-China data processing pipeline.',  # short description
     long_description=long_description,
     long_description_content_type="text/markdown",
     url='http://github.com/hypergravity/songcn',
@@ -26,6 +26,7 @@ setuptools.setup(
     #              'twodspec': 'twodspec'}, commented because it's wrong
     package_data={"song": ['calibration/*',
                            'data/*'],
+                  "songcn": ["config/*"],
                   "": ["LICENSE"]
                   },
     # include_package_data=True, commented to include data!

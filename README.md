@@ -56,9 +56,9 @@ from song import Song
 
 # step2: initialize Song object by scanning files
 s = Song.init(rootdir="/Users/cham/projects/song/star_spec", date="20191030", jdnight=True, n_jobs=-1, verbose=True, subdir="night", node=2)
-# usually you can just modify rootdir and date
+# usually you can just modify rootdir and datestr
 # rootdir: the root directory
-# date: date of the observation
+# datestr: datestr of the observation
 # jdnight: if True, split data at 12:00 next day; if False, only use the data in this directory
 # n_jobs: number of jobs for scanning files, -1 for all
 # verbose: if True, print information
