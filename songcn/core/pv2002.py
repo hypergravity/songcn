@@ -54,6 +54,7 @@ class PV2002:
         self.n_lambda, self.n_width = self.S_lambda_x.shape
         self.f_lambda_sum = np.einsum("ij->i", S_lambda_x) - remainders * S_lambda_x[:, 0] - (
                 1 - remainders) * S_lambda_x[:, -1]
+        self.l_lambda_0 = self.l_lambda_1 = None  # sky light spectrum, initialized with None
         self.f_lambda_0 = self.f_lambda_1 = None  # 1D spectrum, initialized with None
         self.g_j_0 = self.g_j_1 = None  # spatial profile, initialized with None
         self.remainders = remainders
@@ -78,6 +79,7 @@ class PV2002:
         self.dt = 0.
         self.d_g_j = 0.
         self.d_f_lambda = 0.
+        self.d_l_lambda = 0.
         self.maxdev_S = 0.
         self.meddev_S = 0.
         self.clip_sigma = clip_sigma
@@ -153,6 +155,72 @@ class PV2002:
               f"    - MedDev(S)   = {self.meddev_S:.2e},\n"
               f"    - MaxDev(S)   = {self.maxdev_S:.2e},\n"
               f"    - N_clip      = {np.sum(~self.lambda_good)} / {self.n_lambda}")
+        return
+
+    def iterate_ipv(self, sky_regularization=1.):
+        """ Do one iteration with P&V 2002 algorithm. """
+        t_0 = datetime.datetime.now()
+
+        # prepare to iterate
+        self.f_lambda_0 = self.f_lambda_1
+        self.l_lambda_0 = self.l_lambda_1
+        self.g_j_0 = self.g_j_1
+
+        if self.f_lambda_0 is None:
+            self.f_lambda_0 = self.f_lambda_sum
+            self.f_lambda_history.append(self.f_lambda_0)
+            self.g_j_0 = np.ones((self.n_width + 1) * self.osr, dtype=float) / (self.n_width + 1)
+            self.l_lambda_0 = np.zeros_like(self.f_lambda_0, dtype=float)
+
+        # solve new spatial profile
+        self.A_j_k = self.eval_A_j_k(self.f_lambda_0[self.lambda_good], self.w_lambda_x_j[self.lambda_good])
+        self.R_k = self.eval_R_k(
+            self.S_lambda_x[self.lambda_good] - self.l_lambda_0[self.lambda_good, None],
+            self.f_lambda_0[self.lambda_good],
+            self.w_lambda_x_j[self.lambda_good]
+        )
+        self.g_j_1 = np.linalg.solve(self.A_j_k + self.L * self.B_j_k, self.R_k)
+        if self.zero_wing:
+            self.g_j_1[:self.osr * self.zero_wing] = 0
+            self.g_j_1[-self.osr * self.zero_wing:] = 0
+        self.g_j_1[self.g_j_1 < 0] = 0
+        self.g_j_1 *= self.osr / self.g_j_1.sum()
+        # solve new spectrum with new spatial profile
+        self.C_lambda = self.eval_C_lambda(self.S_lambda_x - self.l_lambda_0[:, None], self.w_lambda_x_j, self.g_j_1)
+        self.D_lambda = self.eval_D_lambda(self.w_lambda_x_j, self.g_j_1)
+        self.f_lambda_1 = self.C_lambda / self.D_lambda
+        # reconstruct image
+        self.S_rec = np.einsum("i,ijk,k->ij", self.f_lambda_1, self.w_lambda_x_j, self.g_j_1)
+        # solve skylight
+        self.l_lambda_1 = np.mean(self.S_lambda_x - self.S_rec, axis=1) - sky_regularization
+        # force skylight to be positive
+        self.l_lambda_1[self.l_lambda_1 < 0] = 0.
+        # record iteration number
+        self.n_iter += 1
+        # append results in history
+        self.f_lambda_history.append(self.f_lambda_1)
+        self.g_j_history.append(self.g_j_1)
+        # verbose info
+        self.dt = datetime.datetime.now() - t_0
+        # evaluate variations in spectrum and profile
+        self.d_g_j = np.linalg.norm(self.g_j_1 - self.g_j_0, np.inf)
+        self.d_f_lambda = np.linalg.norm(self.f_lambda_1 - self.f_lambda_0, np.inf)
+        self.d_l_lambda = np.linalg.norm(self.l_lambda_1 - self.l_lambda_0, np.inf)
+        # evaluate deviation from input images
+        self.maxdev_S = np.linalg.norm(self.S_lambda_x - self.S_rec, np.inf)
+        self.meddev_S = np.median(np.max(np.abs(self.S_lambda_x - self.S_rec), axis=1))
+
+        self.lambda_good &= np.all(np.abs(self.S_lambda_x - self.S_rec) < self.clip_sigma * self.meddev_S, axis=1)
+
+        print(
+            f"Finish {self.n_iter}th iteration: D(t)={self.dt.total_seconds():.2f} sec! \n"
+            f"    - D(g_j)      = {self.d_g_j:.2e},\n"
+            f"    - D(f_lambda) = {self.d_f_lambda:.2e},\n"
+            f"    - D(l_lambda) = {self.d_l_lambda:.2e},\n"
+            f"    - MedDev(S)   = {self.meddev_S:.2e},\n"
+            f"    - MaxDev(S)   = {self.maxdev_S:.2e},\n"
+            f"    - N_clip      = {np.sum(~self.lambda_good)} / {self.n_lambda}"
+        )
         return
 
     @staticmethod
@@ -399,11 +467,9 @@ def test_downsample_spectral_profile():
     return
 
 
-def generate_gaussian_profile(npix=10):
-    # 5 sigma
-    xx = np.linspace(-5, 5, npix)
-    yy = np.exp(-xx ** 2)
-    return yy / yy.sum()
+def generate_gaussian_profile(xx, center=0, width=1., amplitude=1.):
+    yy = np.exp(-0.5 * ((xx - center) / width) ** 2) * amplitude
+    return yy
 
 
 def test_pv2002():
