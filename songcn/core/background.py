@@ -23,9 +23,11 @@ Aims
 
 """
 
-import matplotlib.pyplot as plt
+import logging
+
 import numpy as np
 from skimage import filters, morphology
+from tqdm import tqdm
 
 
 def straight_line_2pts(x, y):
@@ -62,22 +64,26 @@ def background(img, al, q=(40, 5), median_sigma=15, gaussian_sigma=15):
     bg = np.where(mask, 0., img)
     qs = np.linspace(*q, num=len(al))
 
-    # img_coord = np.arange(n_row)
-
-    for i_ap in range(len(al)):
-        print(f"processing {i_ap}")
-        if i_ap == 0:
-            ap_center_left = (2 * al[i_ap].ap_center_floor - al[i_ap + 1].ap_center_floor).astype(int)
+    # img_coord = np.arange(n_lambda)
+    logging.info("Start processing background ...")
+    for i_ap in tqdm(range(len(al)), unit="Aperture"):
+        if len(al) == 1:
+            ap_center_left = (al[i_ap].ap_center_floor - 2 * al[i_ap].ap_width).astype(int)
             ap_center_center = al[i_ap].ap_center_floor.astype(int)
-            ap_center_right = al[i_ap + 1].ap_center_floor.astype(int)
-        elif i_ap == len(al) - 1:
-            ap_center_left = al[i_ap - 1].ap_center_floor.astype(int)
-            ap_center_center = al[i_ap].ap_center_floor.astype(int)
-            ap_center_right = (2 * al[i_ap].ap_center_floor - al[i_ap - 1].ap_center_floor).astype(int)
+            ap_center_right = (al[i_ap].ap_center_floor + 2 * al[i_ap].ap_width).astype(int)
         else:
-            ap_center_left = al[i_ap - 1].ap_center_floor.astype(int)
-            ap_center_center = al[i_ap].ap_center_floor.astype(int)
-            ap_center_right = al[i_ap + 1].ap_center_floor.astype(int)
+            if i_ap == 0:
+                ap_center_left = (2 * al[i_ap].ap_center_floor - al[i_ap + 1].ap_center_floor).astype(int)
+                ap_center_center = al[i_ap].ap_center_floor.astype(int)
+                ap_center_right = al[i_ap + 1].ap_center_floor.astype(int)
+            elif i_ap == len(al) - 1:
+                ap_center_left = al[i_ap - 1].ap_center_floor.astype(int)
+                ap_center_center = al[i_ap].ap_center_floor.astype(int)
+                ap_center_right = (2 * al[i_ap].ap_center_floor - al[i_ap - 1].ap_center_floor).astype(int)
+            else:
+                ap_center_left = al[i_ap - 1].ap_center_floor.astype(int)
+                ap_center_center = al[i_ap].ap_center_floor.astype(int)
+                ap_center_right = al[i_ap + 1].ap_center_floor.astype(int)
 
         pos_left = .5 * (ap_center_left + ap_center_center)
         pos_right = .5 * (ap_center_center + ap_center_right)
@@ -111,8 +117,8 @@ def background(img, al, q=(40, 5), median_sigma=15, gaussian_sigma=15):
     bg2 = filters.gaussian(bg1, sigma=gaussian_sigma, mode="reflect")
     return bg2
 
-
 # if __name__ == "__main__":
+#     import matplotlib.pyplot as plt
 #     fig, axs = plt.subplots(1, 2, figsize=(12, 6), sharex=True, sharey=True)
 #     axs[0].imshow(np.log10(img))
 #     axs[1].imshow(np.log10(bg1))
