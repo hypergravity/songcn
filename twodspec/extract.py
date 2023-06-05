@@ -258,6 +258,7 @@ def extract_aperture(im, ap_center_interp, n_chunks=8, ap_width=15,
 
     # error image
     ap_im_errerr = ap_im / gain + ron ** 2. # lijiao
+    ap_im_err = np.sqrt(ap_im_errerr) # lijiao
 
     # 2. extract profile (quite good so far) for each chunk
     prof_recon, prof_xoversample, prof_oversample, prof_out = extract_profile(
@@ -281,7 +282,8 @@ def extract_aperture(im, ap_center_interp, n_chunks=8, ap_width=15,
 
     # 5. re-extract using profile (robust but not always good)
     spec_extr2 = extract_from_profile(ap_im, prof_recon_masked, var=None)
-    err_extr2 = extract_from_profile(ap_im_err, prof_recon_masked, var=None)
+    errrr_extr2 = extract_from_profile(ap_im_errrr, prof_recon_masked, var=None)
+    err_extr2 = np.sqrt(errerr_extr2)
 
     # 6. combine extraction (robust)
     mask_extr = np.abs((spec_extr2 - spec_extr1) / err_extr2) > 3.
