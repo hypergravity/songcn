@@ -257,7 +257,7 @@ def extract_aperture(im, ap_center_interp, n_chunks=8, ap_width=15,
     ap_im = np.where(ap_im > 0, ap_im, 0)
 
     # error image
-    ap_im_errerr = ap_im / gain + ron ** 2. # lijiao
+    ap_im_err_squared = ap_im / gain + ron ** 2. # lijiao
     ap_im_err = np.sqrt(ap_im_errerr) # lijiao
 
     # 2. extract profile (quite good so far) for each chunk
@@ -268,8 +268,8 @@ def extract_aperture(im, ap_center_interp, n_chunks=8, ap_width=15,
 
     # 3. extract using profile
     spec_extr1 = extract_from_profile(ap_im, prof_recon, var=None)
-    errerr_extr1 = extract_from_profile(ap_im_errerr, prof_recon, var=None) # lijiao
-    err_extr1 = np.sqrt(errerr_extr1) # lijiao
+    err_squared_extr1 = extract_from_profile(ap_im_err_squared, prof_recon, var=None) # lijiao
+    err_extr1 = np.sqrt(err_squared_extr1) # lijiao
 
     # 4. 3-sigma clipping
     # reconstruct image
