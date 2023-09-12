@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name='songcn',
-    version='0.1.0',
+    version='0.1.1',
     author='Bo Zhang',
     author_email='bozhang@nao.cas.cn',
     description='The SONG-China data processing pipeline.',  # short description

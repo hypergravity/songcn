@@ -6,15 +6,12 @@ numba==0.56.3
 numpy==1.23.3
 numpydoc==1.4.0
 pandas==1.4.2
-PyYAML==6.0
-ruamel.yaml==0.17.21
 scikit-image==0.19.3
 scikit-learn
 ipyparallel==8.4.1
-ipython==7.34.0
-tqdm>=4.64.1
+tqdm
 yaml==0.2.5
 imageio==2.19.3
 songcn==0.1.0
-scipy==1.9.1
+scipy
 pyqt5==5.15.7

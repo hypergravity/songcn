@@ -44,10 +44,6 @@ Bo Zhang, [bozhang@nao.cas.cn](mailto:bozhang@nao.cas.cn)
     trace aperture
 
 
-## acknowledgements
-
-*SmoothingSpline* is from https://github.com/wafo-project/pywafo
-
 ## tutorial
 
 ```python
