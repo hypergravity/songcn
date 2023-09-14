@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.optimize import least_squares
+from scipy.optimize import least_squares, OptimizeResult
 
 
 def cost1d(p, x, y, pw=2):
@@ -14,33 +14,43 @@ def cost2d(p, x, y, z, deg=(1, 1), pw=2):
 
 
 class PolyFit1D:
-    """
-    1D polynomial fitter.
+    """1D Chebyshev polynomial fitter.
 
-    Parameters
+    Attributes
     ----------
-    x : np.ndarray
-        X data.
-    y : np.ndarray
-        Y data.
-    deg : int
-        The degree of polynomial in X dimension.
+    x_mean, y_mean : float
+        The mean of `x` and `y` data.
+    x_scale, y_scale : float
+        The scale of `x` and `y` data.
+    x_scaled, y_scaled : float
+        The scaled `x` and `y` data.
     pw : int
-        The cost type is ``(abs(model-obs))**pw``.
+        1 or 2. The cost type is ``(abs(model-obs))**pw``.
+    deg : int
+        The degree of polynomial in `x` dimension.
+    opt : OptimizeResult
+        Optimization result.
+    p : np.ndarray
+        Optimized polynomial coefficients.
     robust : bool
-        If True, use median instead of mean to estimate initial parameters.
+        If True, use `median` instead of `mean` to estimate initial parameters.
     """
+
     x_mean = 0
     x_scale = 0
     y_mean = 0
     y_scale = 0
 
-    x_sc = 0
-    y_sc = 0
+    x_scaled = 0
+    y_scaled = 0
 
+    deg = 0
+    pw = 1
+
+    # optimized results
     opt = None
     p = None
-    deg = 0
+
     rms = 0
 
     def __init__(self, x, y, deg=1, pw=1, robust=True):
@@ -57,12 +67,14 @@ class PolyFit1D:
             self.y_mean = np.mean(y)
 
         # normalize data
-        self.x_sc = (x - self.x_mean) / self.x_scale
-        self.y_sc = (y - self.y_mean) / self.y_scale
+        self.x_scaled = (x - self.x_mean) / self.x_scale
+        self.y_scaled = (y - self.y_mean) / self.y_scale
 
         # fit data
         p0 = np.zeros((deg + 1,), dtype=float)
-        self.opt = least_squares(cost1d, p0, method="lm", args=(self.x_sc, self.y_sc, pw))
+        self.opt = least_squares(
+            cost1d, p0, method="lm", args=(self.x_scaled, self.y_scaled, pw)
+        )
         self.p = self.opt.x
 
         self.pw = pw
@@ -76,24 +88,28 @@ class PolyFit1D:
 
 
 class PolyFit2D:
-    """
-    2D polynomial fitter.
+    """2D Chebyshev polynomial fitter.
 
-    Parameters
+    Attributes
     ----------
-    x : np.ndarray
-        X data.
-    y : np.ndarray
-        Y data.
-    z : np.ndarray
-        Z data.
-    deg : tuple
-        The degrees of polynomials in X and Y dimensions.
+    x_mean, y_mean, z_mean : float
+        The mean of `x`, `y` and `z` data.
+    x_scale, y_scale, z_scale : float
+        The scale of `x`, `y` and `z` data.
+    x_scaled, y_scaled, z_scaled : float
+        The scaled `x`, `y` and `z`data.
     pw : int
-        The cost type is ``(abs(model-obs))**pw``.
+        1 or 2. The cost type is ``(abs(model-obs))**pw``.
+    deg : int
+        The degree of polynomial in `x` dimension.
+    opt : OptimizeResult
+        Optimization result.
+    p : np.ndarray
+        Optimized polynomial coefficients.
     robust : bool
-        If True, use median instead of mean to estimate initial parameters.
+        If True, use `median` instead of `mean` to estimate initial parameters.
     """
+
     x_mean = 0
     x_scale = 0
     y_mean = 0
@@ -101,9 +117,9 @@ class PolyFit2D:
     z_mean = 0
     z_scale = 0
 
-    x_sc = 0
-    y_sc = 0
-    z_sc = 0
+    x_scaled = 0
+    y_scaled = 0
+    z_scaled = 0
 
     opt = None
     p = None
@@ -128,13 +144,18 @@ class PolyFit2D:
             self.z_mean = np.mean(z)
 
         # normalize data
-        self.x_sc = (x - self.x_mean) / self.x_scale
-        self.y_sc = (y - self.y_mean) / self.y_scale
-        self.z_sc = (z - self.z_mean) / self.z_scale
+        self.x_scaled = (x - self.x_mean) / self.x_scale
+        self.y_scaled = (y - self.y_mean) / self.y_scale
+        self.z_scaled = (z - self.z_mean) / self.z_scale
 
         # fit data
         p0 = np.zeros((deg[0] + 1, deg[1] + 1), dtype=float).flatten()
-        self.opt = least_squares(cost2d, p0, method="lm", args=(self.x_sc, self.y_sc, self.z_sc, deg, pw))
+        self.opt = least_squares(
+            cost2d,
+            p0,
+            method="lm",
+            args=(self.x_scaled, self.y_scaled, self.z_scaled, deg, pw),
+        )
         self.p = self.opt.x
 
         self.pw = pw
@@ -142,11 +163,12 @@ class PolyFit2D:
         self.deg = deg
 
     def __call__(self, x, y):
-        x_sc = (x - self.x_mean) / self.x_scale
-        y_sc = (y - self.y_mean) / self.y_scale
-        z_sc = np.polynomial.chebyshev.chebval2d(
-            x_sc, y_sc, self.p.reshape(self.deg[0] + 1, self.deg[1] + 1))
-        return z_sc * self.z_scale + self.z_mean
+        x_scaled = (x - self.x_mean) / self.x_scale
+        y_scaled = (y - self.y_mean) / self.y_scale
+        z_scaled = np.polynomial.chebyshev.chebval2d(
+            x_scaled, y_scaled, self.p.reshape(self.deg[0] + 1, self.deg[1] + 1)
+        )
+        return z_scaled * self.z_scale + self.z_mean
 
 
 def test_poly1d():
@@ -154,17 +176,18 @@ def test_poly1d():
     yy = (xx - 1001.5) ** 2 * 100 + 100 + np.random.normal(0, 1, xx.shape)
 
     fig = plt.figure()
-    plt.plot(xx, yy, 'x')
+    plt.plot(xx, yy, "x")
     poly1d1 = PolyFit1D(xx, yy, deg=2, pw=1)
-    plt.plot(xx, poly1d1(xx), 'r-', label="deg=2, pw=1")
+    plt.plot(xx, poly1d1(xx), "r-", label="deg=2, pw=1")
     poly1d2 = PolyFit1D(xx, yy, deg=2, pw=2)
-    plt.plot(xx, poly1d2(xx), 'r-', label="deg=2, pw=2")
+    plt.plot(xx, poly1d2(xx), "r-", label="deg=2, pw=2")
     poly1dnp = np.polyfit(xx, yy, deg=2)
     plt.plot(xx, np.polyval(poly1dnp, xx), color="gray", label="numpy.polyfit")
     plt.legend()
     plt.xlabel("X")
     plt.ylabel("Y")
     fig.tight_layout()
+    plt.show()
 
 
 def test_poly2d():
@@ -178,19 +201,29 @@ def test_poly2d():
     )
 
     fig = plt.figure()
-    ax = fig.add_subplot(projection='3d')
+    ax = fig.add_subplot(projection="3d")
     ax.scatter(xx, yy, zz, s=5, c="cyan", label="Data")
     poly2d = PolyFit2D(xx, yy, zz, deg=(2, 2), pw=2)
 
     zpred = poly2d(xgrid, ygrid)
     ax.plot_surface(
-        xgrid, ygrid, zpred, rstride=1, cstride=1, cmap=plt.cm.coolwarm,
-        linewidth=0, antialiased=False, alpha=.5, label="Poly2dFitter")
+        xgrid,
+        ygrid,
+        zpred,
+        rstride=1,
+        cstride=1,
+        cmap=plt.cm.coolwarm,
+        linewidth=0,
+        antialiased=False,
+        alpha=0.5,
+        label="Poly2dFitter",
+    )
     # ax.legend()
     ax.set_xlabel("X")
     ax.set_ylabel("Y")
     ax.set_zlabel("Z")
     fig.tight_layout()
+    plt.show()
 
 
 if __name__ == "__main__":
