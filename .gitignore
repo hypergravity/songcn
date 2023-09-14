@@ -1,4 +1,11 @@
 figs/
+*.jpg
+*.jpeg
+*.png
+*.fits
+*.dump
+*.phelp
+*.pdf
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
