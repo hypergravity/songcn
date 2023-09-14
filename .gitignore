@@ -1,7 +1,9 @@
 photos/
 song/
 twodspec/
+old_figs/
 figs/
+draft/
 *.jpg
 *.jpeg
 *.png
