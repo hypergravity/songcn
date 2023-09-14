@@ -5,6 +5,7 @@ clean:
 
 install:
 	pip install .
+	rm -rf build songcn.egg-info
 
 upload:
 	rm -rf dist/
