@@ -1,27 +1,46 @@
 import logging
-from collections import namedtuple
+from typing import NamedTuple
 
-import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 from scipy.signal import argrelextrema
 
+
 # LocalMax
-LocalMax = namedtuple(
-    typename="LocalMax",
-    field_names=[
-        "num",  # number of maxima
-        "max_ind",  # index of maxima -> most important, the start point of `trace_one_aperture`
-        "max_val",  # value of maxima
-        "max_val_interp",  # value interpolated from neighboring minima
-        "max_snr",  # SNR of maxima (max/max_val_interp)
-        "min_ind",  # index of minima
-        "side_ind",  # index of two sides
-        "side_mask",  # True if out of bounds
-    ],
-)
+# LocalMax = namedtuple(
+#     typename="LocalMax",
+#     field_names=[
+#         "num",  # number of maxima
+#         "max_ind",  # index of maxima -> most important, the start point of `trace_one_aperture`
+#         "max_val",  # value of maxima
+#         "max_val_interp",  # value interpolated from neighboring minima
+#         "max_snr",  # SNR of maxima (max/max_val_interp)
+#         "side_ind",  # index of two sides
+#         "side_mask",  # True if out of bounds
+#     ],
+# )
 
 
-def find_local_max_1d(x, kernel_width=15) -> LocalMax:
+class LocalMax(NamedTuple):
+    # int: number of maxima
+    num: int
+    # (52,): index of maxima -> most important, the start point of `trace_one_aperture`
+    max_ind: npt.NDArray[np.int_]
+    # (52,): value of maxima
+    max_val: npt.NDArray[np.float_]
+    # (52,): value interpolated from neighboring minima
+    max_val_interp: npt.NDArray[np.float_]
+    # (52,): SNR of maxima (max/max_val_interp)
+    max_snr: npt.NDArray[np.float_]
+    # (53,): index of minima
+    min_ind: npt.NDArray[np.int_]
+    # (2, 52): index of two sides
+    side_ind: npt.NDArray[np.int_]
+    # (2, 52): True if out of bounds
+    side_mask: npt.NDArray[np.bool_]
+
+
+def find_local_max_1d(x: npt.NDArray, kernel_width: int = 15) -> LocalMax:
     """Convolve 1d array `x` with a pulse kernel with width `kernel_width`, and find local maxima.
 
     Parameters
@@ -84,13 +103,13 @@ def generate_pulse_kernel(kernel_width: int = 15) -> np.ndarray:
 
 
 def trace_one_aperture(
-    image: np.ndarray,
-    init_pos: tuple = (1000, 993),
+    image: npt.NDArray,
+    init_pos: tuple[int, int] = (1000, 993),
     extra_bin: int = 1,
     kernel_width: int = 10,
     max_dev: int = 5,
     verbose: bool = False,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[npt.NDArray, npt.NDArray]:
     """
     Given an initial position, search for the aperture.
 
@@ -137,50 +156,50 @@ def trace_one_aperture(
             ]
         )
 
-    ap_col = np.zeros(n_row, dtype=int)  # (n_row,) the column indices of the aperture
-    ap_mask = np.zeros(n_row, dtype=bool)  # (n_row,) the mask of the aperture
+    ind_col = np.zeros(n_row, dtype=int)  # (n_row,) the column indices of the aperture
+    mask = np.zeros(n_row, dtype=bool)  # (n_row,) the mask of the aperture
 
-    ap_col[init_row] = init_col
+    ind_col[init_row] = init_col
     # search in current row
     i_row = init_row  # this is special
     chunk_data = image[
-        i_row, ap_col[i_row] - 2 * kernel_width : ap_col[i_row] + 1 + 2 * kernel_width
+        i_row, ind_col[i_row] - 2 * kernel_width : ind_col[i_row] + 1 + 2 * kernel_width
     ]
     argmax = argrelextrema(
         chunk_data, np.greater_equal, order=kernel_width, mode="clip"
     )[0]
     ind_min_dev = np.argmin(np.abs(argmax - 2 * kernel_width))
     if np.min(np.abs(argmax[ind_min_dev] - 2 * kernel_width)) <= max_dev:
-        ap_col[i_row] = ap_col[i_row] - 2 * kernel_width + argmax[ind_min_dev]
+        ind_col[i_row] = ind_col[i_row] - 2 * kernel_width + argmax[ind_min_dev]
     else:
         if verbose:
             logging.warning(
                 f"Warning: deviation({np.min(np.abs(argmax[ind_min_dev] - 2 * kernel_width)):d})"
                 f" larger than max_dev({max_dev}) in Row {i_row}"
             )
-        ap_col[i_row] = ap_col[i_row]
-        ap_mask[i_row] = True
+        ind_col[i_row] = ind_col[i_row]
+        mask[i_row] = True
 
     # search the above
     for i_row in np.arange(init_row)[::-1]:
         # try:
-        chunk_start = max(0, ap_col[i_row + 1] - 2 * kernel_width)
-        chunk_stop = min(n_col - 1, ap_col[i_row + 1] + 1 + 2 * kernel_width)
+        chunk_start = max(0, ind_col[i_row + 1] - 2 * kernel_width)
+        chunk_stop = min(n_col - 1, ind_col[i_row + 1] + 1 + 2 * kernel_width)
         chunk_data = image[i_row, chunk_start:chunk_stop]
         argmax = argrelextrema(
             chunk_data, np.greater_equal, order=kernel_width, mode="clip"
         )[0]
-        ind_min_dev = np.argmin(np.abs(argmax + chunk_start - ap_col[i_row + 1]))
+        ind_min_dev = np.argmin(np.abs(argmax + chunk_start - ind_col[i_row + 1]))
         if np.min(np.abs(argmax[ind_min_dev] - 2 * kernel_width)) <= max_dev:
-            ap_col[i_row] = ap_col[i_row + 1] - 2 * kernel_width + argmax[ind_min_dev]
+            ind_col[i_row] = ind_col[i_row + 1] - 2 * kernel_width + argmax[ind_min_dev]
         else:
             if verbose:
                 logging.warning(
                     f"Warning: deviation({np.min(np.abs(argmax[ind_min_dev] - 2 * kernel_width)):d})"
                     f" larger than max_dev({max_dev}) in Row {i_row}"
                 )
-            ap_col[i_row] = ap_col[i_row + 1]
-            ap_mask[i_row] = True
+            ind_col[i_row] = ind_col[i_row + 1]
+            mask[i_row] = True
         # except:
         #     ap_col[i_row] = ap_col[i_row + 1]
         #     ap_mask[i_row] = True
@@ -188,27 +207,27 @@ def trace_one_aperture(
     # search the below
     for i_row in np.arange(init_row + 1, n_row):
         # try:
-        chunk_start = max(0, ap_col[i_row - 1] - 2 * kernel_width)
-        chunk_stop = min(n_col - 1, ap_col[i_row - 1] + 1 + 2 * kernel_width)
+        chunk_start = max(0, ind_col[i_row - 1] - 2 * kernel_width)
+        chunk_stop = min(n_col - 1, ind_col[i_row - 1] + 1 + 2 * kernel_width)
         chunk_data = image[i_row, chunk_start:chunk_stop]
         argmax = argrelextrema(
             chunk_data, np.greater_equal, order=kernel_width, mode="clip"
         )[0]
-        ind_min_dev = np.argmin(np.abs(argmax + chunk_start - ap_col[i_row - 1]))
+        ind_min_dev = np.argmin(np.abs(argmax + chunk_start - ind_col[i_row - 1]))
         if np.min(np.abs(argmax[ind_min_dev] - 2 * kernel_width)) <= max_dev:
-            ap_col[i_row] = ap_col[i_row - 1] - 2 * kernel_width + argmax[ind_min_dev]
+            ind_col[i_row] = ind_col[i_row - 1] - 2 * kernel_width + argmax[ind_min_dev]
         else:
             logging.warning(
                 f"Warning: deviation({np.min(np.abs(argmax[ind_min_dev] - 2 * kernel_width)):d})"
                 f" larger than maxdev({max_dev}) in Row {i_row}"
             )
-            ap_col[i_row] = ap_col[i_row - 1]
-            ap_mask[i_row] = True
+            ind_col[i_row] = ind_col[i_row - 1]
+            mask[i_row] = True
         # except:
         #     ap_col[i_row] = ap_col[i_row - 1]
         #     ap_mask[i_row] = True
 
-    return ap_col, ap_mask
+    return ind_col, mask
 
 
 # def find_local_max_2d(img, pos_init=(1, 1), extra_bin=1, kernel_width=10) -> np.ndarray:
@@ -222,53 +241,3 @@ def trace_one_aperture(
 #         is_local_max[i_row, localmax.max_ind] = True
 #         print(f"irow = {i_row}, {localmax.num} max found")
 #     return is_local_max
-
-
-if __name__ == "__main__":
-    import os
-    from astropy.io import fits
-    import numpy as np
-
-    print("Current workding directory:", os.getcwd())
-    fp = "/Users/cham/VSCProjects/songcn/data/20191031/flat-bias.fits"
-
-    print(f"Read file: {fp}")
-    image = fits.getdata(fp)
-
-    print("Get central slice")
-    central_ind = int(image.shape[0] / 2)
-    central_slice = image[central_ind : central_ind + 10].sum(axis=0)
-
-    print("Search for local maxima with different kernel widths")
-    for kernel_width in np.arange(5, 30):
-        localmax = find_local_max_1d(x=central_slice, kernel_width=kernel_width)
-        print(
-            f"kernel_width: {kernel_width}, number of max: {localmax.num}, "
-            f"median SNR: {np.median(localmax.max_snr):.2f}, mean SNR: {np.mean(localmax.max_snr):.2f}"
-        )
-
-    print("Approximately set kernel_width to 15")
-    localmax = find_local_max_1d(x=central_slice, kernel_width=15)
-
-    fig, ax = plt.subplots(1, 1, figsize=(8, 8))
-    ax.imshow(
-        np.log10(image),
-        extent=(
-            -0.5,
-            2047.5,
-            -0.5,
-            2047.5,
-        ),
-        origin="lower",
-    )
-    for i_ap in np.arange(localmax.num):
-        ap_col, ap_mask = trace_one_aperture(
-            image,
-            init_pos=(central_ind, localmax.max_ind[i_ap]),  # (1024, 2026)
-            extra_bin=1,
-            kernel_width=15,
-            max_dev=3,
-        )
-        ax.plot(ap_col, np.arange(image.shape[0]), c="k")
-        print(f"i_ap = {i_ap}, masksum = {sum(ap_mask)}")
-    plt.show()
