@@ -12,10 +12,10 @@ setuptools.setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="http://github.com/hypergravity/songcn",
-    # packages=setuptools.find_packages(),
-    packages=[
-        "songcn",
-    ],
+    packages = (setuptools.find_packages(),)
+    # packages=[
+    #     "songcn",
+    # ],
     license="MIT",
     classifiers=[
         "Development Status :: 5 - Production/Stable",

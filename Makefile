@@ -11,3 +11,6 @@ upload:
 	rm -rf dist/
 	python setup.py sdist bdist_wheel
 	twine upload dist/*
+
+mypy:
+	mypy ./songcn/**/*.py --ignore-missing-imports
