@@ -1,80 +1,14 @@
 from typing import Union, Optional
 
+import joblib
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 
 from .background import smooth_background
 from .polynomial import PolyFit1D
+from .pv2002 import PV2002
 from .trace import trace_one_aperture, find_local_max_1d, LocalMax
-
-
-class ApertureList(list):
-    """A list of `Aperture` instances."""
-
-    def __init__(self, *args, **kwargs):
-        super(ApertureList, self).__init__(*args, **kwargs)
-
-    def __repr__(self):
-        return f"<ApertureList: N={len(self)}>"
-
-    @property
-    def center(self) -> np.ndarray:
-        # gather the centers of all apertures
-        return np.array([_.center for _ in self])
-
-    def get_mask(self, width: Optional[int] = 11) -> Optional[np.ndarray]:
-        if len(self) == 0:
-            return None
-        else:
-            mask = self[0].get_mask(width=width)
-            for _ in self[1:]:
-                mask |= _.get_mask(width=width)
-            return mask
-
-    def view_profile(self, img, row=0, fov_width=20, norm=True):
-        plt.figure()
-        for ap in self:
-            center = ap.center[row]
-            ap_center_floor = ap.ind_col_center_floor[row]
-            ap_coord = np.arange(-fov_width, fov_width + 1)
-            plt.plot(
-                ap_coord,
-                img[row, ap_center_floor - fov_width : ap_center_floor + fov_width + 1]
-                / img[row, ap_center_floor],
-            )
-
-    def clip(self):
-        """Reserve the apertures is_good and in_bounds."""
-        for idx in range(len(self))[::-1]:
-            if not (self[idx].is_good and self[idx].in_bounds):
-                self.pop(idx)
-
-    def get_background(
-        self,
-        image: npt.NDArray,
-        width: Optional[int] = None,
-        fill_value: float = np.nan,
-    ) -> npt.NDArray:
-        """Get background (inter-order pixels)."""
-        return np.where(self.get_mask(width=width), fill_value, image)
-
-    def smooth_background(
-        self,
-        image: npt.NDArray,
-        width: Optional[int] = None,
-        q: Union[float, tuple[float, float]] = (40.0, 5.0),
-        sigma_median: Optional[int] = 15,
-        sigma_gaussian: Optional[int] = 15.0,
-    ) -> npt.NDArray:
-        """Smooth background with inter-aperture pixels for ``image``."""
-        bg = self.get_background(image, width=width)
-        return smooth_background(
-            bg,
-            q=q,
-            sigma_median=sigma_median,
-            sigma_gaussian=sigma_gaussian,
-        )
 
 
 class Aperture:
@@ -148,7 +82,7 @@ class Aperture:
     def get_cutout(
         self,
         image: npt.NDArray,
-        sub_row: Union[None, tuple] = (0, 256),
+        row_slc: Union[None, tuple] = None,
         correction: bool = False,
     ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         """Get cutout image for this aperture.
@@ -157,16 +91,18 @@ class Aperture:
         ----------
         correction
         image
-        sub_row
+        row_slc
 
         Returns
         -------
+        tuple
+            mesh_row, mesh_col, mesh_image
 
         """
-        if sub_row is None:
+        if row_slc is None:
             slc = slice(self.n_row)
         else:
-            slc = slice(*sub_row)
+            slc = slice(*row_slc)
 
         mesh_row = self.mesh_row[slc]
         mesh_col = (
@@ -265,4 +201,124 @@ class Aperture:
             kernel_width=kernel_width,
             max_dev=max_dev,
             verbose=verbose,
+        )
+
+
+class ApertureList(list):
+    """A list of `Aperture` instances."""
+
+    def __init__(self, *args, **kwargs):
+        super(ApertureList, self).__init__(*args, **kwargs)
+
+    def __repr__(self):
+        return f"<ApertureList: N={len(self)}>"
+
+    @staticmethod
+    def _reduce(
+        ap: Aperture,
+        image: np.ndarray,
+        chunk_size: int = 256,
+        n_iter: int = 10,
+        tol_f_lambda: float = 1e-3,
+        tol_g_j: float = 1e-10,
+        silent: bool = True,
+    ):
+        """Reduce an aperture. This is used for parallel extraction."""
+        mesh_row, mesh_col, mesh_image = ap.get_cutout(image)
+        pv = PV2002(mesh_col, mesh_row, mesh_image, ap.ind_col_center_remainder)
+        # 256->1min 17s
+        # 512->1min 31s
+        return pv.reduce_chunks(
+            chunk_size=chunk_size,
+            n_iter=n_iter,
+            tol_f_lambda=tol_f_lambda,
+            tol_g_j=tol_g_j,
+            silent=silent,
+        )
+
+    def reduce_all(
+        self,
+        image: np.ndarray,
+        chunk_size: int = 256,
+        n_iter: int = 10,
+        tol_f_lambda: float = 1e-3,
+        tol_g_j: float = 1e-10,
+        silent: bool = True,
+        n_jobs: int = 1,
+        verbose=10,
+        backend: str = "loky",
+        **kwargs,
+    ):
+        results = joblib.Parallel(
+            n_jobs=n_jobs, verbose=verbose, backend=backend, **kwargs
+        )(
+            joblib.delayed(ApertureList._reduce)(
+                self[i_ap],
+                image,
+                chunk_size=chunk_size,
+                n_iter=n_iter,
+                tol_f_lambda=tol_f_lambda,
+                tol_g_j=tol_g_j,
+                silent=silent,
+            )
+            for i_ap in range(self.__len__())
+        )
+        return results
+
+    @property
+    def center(self) -> np.ndarray:
+        # gather the centers of all apertures
+        return np.array([_.center for _ in self])
+
+    def get_mask(self, width: Optional[int] = 11) -> Optional[np.ndarray]:
+        if len(self) == 0:
+            return None
+        else:
+            mask = self[0].get_mask(width=width)
+            for _ in self[1:]:
+                mask |= _.get_mask(width=width)
+            return mask
+
+    def view_profile(self, img, row=0, fov_width=20, norm=True):
+        plt.figure()
+        for ap in self:
+            center = ap.center[row]
+            ap_center_floor = ap.ind_col_center_floor[row]
+            ap_coord = np.arange(-fov_width, fov_width + 1)
+            plt.plot(
+                ap_coord,
+                img[row, ap_center_floor - fov_width : ap_center_floor + fov_width + 1]
+                / img[row, ap_center_floor],
+            )
+
+    def clip(self):
+        """Reserve the apertures is_good and in_bounds."""
+        for idx in range(len(self))[::-1]:
+            if not (self[idx].is_good and self[idx].in_bounds):
+                self.pop(idx)
+
+    def get_background(
+        self,
+        image: npt.NDArray,
+        width: Optional[int] = None,
+        fill_value: float = np.nan,
+    ) -> npt.NDArray:
+        """Get background (inter-order pixels)."""
+        return np.where(self.get_mask(width=width), fill_value, image)
+
+    def smooth_background(
+        self,
+        image: npt.NDArray,
+        width: Optional[int] = None,
+        q: Union[float, tuple[float, float]] = (40.0, 5.0),
+        sigma_median: Optional[int] = 15,
+        sigma_gaussian: Optional[int] = 15.0,
+    ) -> npt.NDArray:
+        """Smooth background with inter-aperture pixels for ``image``."""
+        bg = self.get_background(image, width=width)
+        return smooth_background(
+            bg,
+            q=q,
+            sigma_median=sigma_median,
+            sigma_gaussian=sigma_gaussian,
         )

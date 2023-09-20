@@ -1,4 +1,5 @@
 import datetime
+from bisect import bisect
 from typing import Optional
 
 import joblib
@@ -6,6 +7,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 from scipy.linalg import toeplitz
+
+from .interpolate import interpolate_distribution
 
 
 class PV2002:
@@ -50,38 +53,48 @@ class PV2002:
 
     def __init__(
         self,
+        mesh_col: npt.NDArray,
+        mesh_row: npt.NDArray,
         S_lambda_x: npt.NDArray,
         remainders: npt.NDArray,
         osr: int = 10,
-        Lrel: float = 1,
+        Lrel: float = 1.0,
         zero_wing: int = 1,
-        clip_sigma: float = 3,
-        mesh_col: Optional[npt.NDArray] = None,
-        mesh_row: Optional[npt.NDArray] = None,
+        clip_sigma: float = 3.0,
     ):
         # important attributes
         self.mesh_col = mesh_col
         self.mesh_row = mesh_row
         self.S_lambda_x = S_lambda_x
+        self.remainders = remainders
+
+        # determine aperture shape
         self.n_lambda, self.n_width = self.S_lambda_x.shape
+        # print(
+        #     f"Initializing PV2002 ...  image shape = ({self.n_lambda}, {self.n_width})"
+        # )
+        # simple sum extraction
         self.f_lambda_sum = (
             np.einsum("ij->i", S_lambda_x)
             - remainders * S_lambda_x[:, 0]
             - (1 - remainders) * S_lambda_x[:, -1]
         )
-        self.l_lambda_0 = (
-            self.l_lambda_1
-        ) = None  # sky light spectrum, initialized with None
-        self.f_lambda_0 = self.f_lambda_1 = None  # 1D spectrum, initialized with None
-        self.g_j_0 = self.g_j_1 = None  # spatial profile, initialized with None
-        self.remainders = remainders
+        # set initial guess for iteration, initialized with None
+        self.l_lambda_0 = self.l_lambda_1 = None  # sky light spectrum
+        self.f_lambda_0 = self.f_lambda_1 = None  # 1D spectrum
+        self.g_j_0 = self.g_j_1 = None  # spatial profile
+
+        # oversampling rate
         self.osr = osr
+        # regularization
+        self.Lrel = Lrel
         self.L = np.median(self.f_lambda_sum) ** 2 * Lrel
+        # ``zero_wing`` pixels at the edges will be set 0
         self.zero_wing = zero_wing
         # derived quantities
         self.j_max = osr * (self.n_width + 1)
-        self.B_j_k = self.eval_B_j_k(j_max=self.j_max)
-        self.w_lambda_x_j = self.eval_w_lambda_x_j(
+        self.B_j_k = PV2002.eval_B_j_k(j_max=self.j_max)
+        self.w_lambda_x_j = PV2002.eval_w_lambda_x_j(
             remainders, osr=osr, n_pixel=self.n_width
         )
         self.A_j_k = None
@@ -103,7 +116,109 @@ class PV2002:
         self.meddev_S = 0.0
         self.clip_sigma = clip_sigma
 
-    def reduce(self, n_iter=10, tol_f_lambda=1e-3, tol_g_j=1e-10):
+    def reduce_chunks(
+        self,
+        chunk_size: int = 256,
+        n_iter: int = 10,
+        tol_f_lambda: float = 1e-3,
+        tol_g_j: float = 1e-10,
+        silent: bool = False,
+    ):
+        n_chunks = int(np.floor(self.n_lambda / chunk_size))
+
+        g_j_full = np.zeros((self.n_lambda, self.osr * (self.n_width + 1)), float)
+        # lambda_coord = np.arange(self.n_lambda)
+
+        g_j_list = []
+        row_cen_list = []
+        for i in range(n_chunks):
+            if i != n_chunks - 1:
+                row_start, row_stop = (i * chunk_size, (i + 1) * chunk_size)
+            else:
+                row_start, row_stop = (i * chunk_size, self.n_lambda)
+            row_cen: float = np.mean((row_start, row_stop))
+            row_slc = slice(row_start, row_stop)
+            if not silent:
+                print(f"Processing chunk ({row_start}, {row_stop})")
+
+            # solve this chunk
+            this_pv = PV2002(
+                self.mesh_col[row_slc, :],
+                self.mesh_row[row_slc, :],
+                self.S_lambda_x[row_slc, :],
+                remainders=self.remainders[row_slc],
+                osr=self.osr,
+                Lrel=self.Lrel,
+                zero_wing=self.zero_wing,
+                clip_sigma=self.clip_sigma,
+            )
+            this_pv.reduce(
+                n_iter=n_iter, tol_f_lambda=tol_f_lambda, tol_g_j=tol_g_j, silent=silent
+            )
+
+            g_j_list.append(this_pv.g_j_1)
+            row_cen_list.append(row_cen)
+
+        # interpolate g_j
+        for i_row in range(self.n_lambda):
+            i_row_bisect = bisect(a=row_cen_list, x=i_row)
+            if i_row_bisect == 0:
+                g_j_full[i_row] = g_j_list[0]
+            elif 0 < i_row_bisect < n_chunks:
+                f = (i_row - row_cen_list[i_row_bisect - 1]) / (
+                    row_cen_list[i_row_bisect] - row_cen_list[i_row_bisect - 1]
+                )
+                g_j_full[i_row] = interpolate_distribution(
+                    p1=g_j_list[i_row_bisect - 1], p2=g_j_list[i_row_bisect], f=f
+                )
+            else:
+                g_j_full[i_row] = g_j_list[-1]
+
+        # f_lambda=self.f_lambda_1, S_rec=self.S_rec)
+        pv_result = self.easy_reduce(g_j=g_j_full)
+        # construct results
+        result = dict(
+            # original data
+            mesh_col=self.mesh_col,
+            mesh_row=self.mesh_row,
+            S_lambda_x=self.S_lambda_x,
+            remainders=self.remainders,
+            # simple sum
+            f_lambda_sum=self.f_lambda_sum,
+            # PV2002 results
+            f_lambda=pv_result["f_lambda"],  # optimal extraction
+            S_rec=pv_result["S_rec"],  # reconstructed image
+            g_j_list=g_j_list,  # spatial profiles
+            g_j_full=g_j_full,  # interpolated spatial profiles
+            row_cen_list=row_cen_list,  # spatial profile rows
+        )
+        return result
+
+    def easy_reduce(self, g_j: Optional[np.ndarray] = None):
+        """Solve the spectrum and reconstruct image given a known spatial profile ``g_j``."""
+        if g_j is None:
+            if self.g_j_1 is not None:
+                g_j = self.g_j_1
+            elif self.g_j_0 is not None:
+                g_j = self.g_j_0
+            else:
+                raise ValueError(f"Invalid g_j! {g_j}")
+
+        # solve new spectrum with new spatial profile
+        self.C_lambda = self.eval_C_lambda(self.S_lambda_x, self.w_lambda_x_j, g_j)
+        self.D_lambda = self.eval_D_lambda(self.w_lambda_x_j, g_j)
+        self.f_lambda_1 = self.C_lambda / self.D_lambda
+        # reconstruct image
+        self.S_rec = self.reconstruct_image(g_j=g_j)
+        return dict(f_lambda=self.f_lambda_1, S_rec=self.S_rec)
+
+    def reduce(
+        self,
+        n_iter: int = 10,
+        tol_f_lambda: float = 1e-3,
+        tol_g_j: float = 1e-10,
+        silent: bool = False,
+    ):
         """
         Reduce spectrum image iteratively until reaching tolerances.
 
@@ -117,14 +232,14 @@ class PV2002:
             The tolerance of profile (slit function).
         """
         for i_iter in range(n_iter):
-            self.iterate()
+            self.iterate(silent=silent)
             if (
                 np.linalg.norm(self.f_lambda_1 - self.f_lambda_0, np.inf) < tol_f_lambda
                 and np.linalg.norm(self.g_j_1 - self.g_j_0, np.inf) < tol_g_j
             ):
                 break
 
-    def iterate(self):
+    def iterate(self, silent: bool = False):
         """Do one iteration with P&V 2002 algorithm."""
         t_0 = datetime.datetime.now()
 
@@ -158,7 +273,7 @@ class PV2002:
         self.C_lambda = self.eval_C_lambda(
             self.S_lambda_x, self.w_lambda_x_j, self.g_j_1
         )
-        self.D_lambda = self.eval_D_lambda(self.w_lambda_x_j, self.g_j_1)
+        self.D_lambda = PV2002.eval_D_lambda(self.w_lambda_x_j, self.g_j_1)
         self.f_lambda_1 = self.C_lambda / self.D_lambda
         # reconstruct image
         self.S_rec = np.einsum(
@@ -183,17 +298,32 @@ class PV2002:
             axis=1,
         )
 
-        print(
-            f"Finish {self.n_iter}th iteration: D(t)={self.dt.total_seconds():.2f} sec! \n"
-            f"    - D(g_j)      = {self.d_g_j:.2e},\n"
-            f"    - D(f_lambda) = {self.d_f_lambda:.2e},\n"
-            f"    - MedDev(S)   = {self.meddev_S:.2e},\n"
-            f"    - MaxDev(S)   = {self.maxdev_S:.2e},\n"
-            f"    - N_clip      = {np.sum(~self.lambda_good)} / {self.n_lambda}"
-        )
+        if not silent:
+            print(
+                f"Finish {self.n_iter}th iteration: D(t)={self.dt.total_seconds():.2f} sec! \n"
+                f"    - D(g_j)      = {self.d_g_j:.2e},\n"
+                f"    - D(f_lambda) = {self.d_f_lambda:.2e},\n"
+                f"    - MedDev(S)   = {self.meddev_S:.2e},\n"
+                f"    - MaxDev(S)   = {self.maxdev_S:.2e},\n"
+                f"    - N_clip      = {np.sum(~self.lambda_good)} / {self.n_lambda}"
+            )
         return
 
-    def iterate_ipv(self, sky_regularization=1.0):
+    def reconstruct_image(
+        self, f_lambda: Optional[np.ndarray] = None, g_j: Optional[np.ndarray] = None
+    ):
+        """reconstruct image"""
+        if g_j is None:
+            g_j = self.g_j_1
+        if f_lambda is None:
+            f_lambda = self.f_lambda_1
+
+        if g_j.ndim == 1:
+            return np.einsum("i,ijk,k->ij", f_lambda, self.w_lambda_x_j, g_j)
+        elif g_j.ndim == 2:
+            return np.einsum("i,ijk,ik->ij", f_lambda, self.w_lambda_x_j, g_j)
+
+    def iterate_ipv(self, sky_regularization: float = 1.0, silent: bool = False):
         """Do one iteration with P&V 2002 algorithm."""
         t_0 = datetime.datetime.now()
 
@@ -211,10 +341,10 @@ class PV2002:
             self.l_lambda_0 = np.zeros_like(self.f_lambda_0, dtype=float)
 
         # solve new spatial profile
-        self.A_j_k = self.eval_A_j_k(
+        self.A_j_k = PV2002.eval_A_j_k(
             self.f_lambda_0[self.lambda_good], self.w_lambda_x_j[self.lambda_good]
         )
-        self.R_k = self.eval_R_k(
+        self.R_k = PV2002.eval_R_k(
             self.S_lambda_x[self.lambda_good] - self.l_lambda_0[self.lambda_good, None],
             self.f_lambda_0[self.lambda_good],
             self.w_lambda_x_j[self.lambda_good],
@@ -226,10 +356,10 @@ class PV2002:
         self.g_j_1[self.g_j_1 < 0] = 0
         self.g_j_1 *= self.osr / self.g_j_1.sum()
         # solve new spectrum with new spatial profile
-        self.C_lambda = self.eval_C_lambda(
+        self.C_lambda = PV2002.eval_C_lambda(
             self.S_lambda_x - self.l_lambda_0[:, None], self.w_lambda_x_j, self.g_j_1
         )
-        self.D_lambda = self.eval_D_lambda(self.w_lambda_x_j, self.g_j_1)
+        self.D_lambda = PV2002.eval_D_lambda(self.w_lambda_x_j, self.g_j_1)
         self.f_lambda_1 = self.C_lambda / self.D_lambda
         # reconstruct image
         self.S_rec = np.einsum(
@@ -261,15 +391,16 @@ class PV2002:
             axis=1,
         )
 
-        print(
-            f"Finish {self.n_iter}th iteration: D(t)={self.dt.total_seconds():.2f} sec! \n"
-            f"    - D(g_j)      = {self.d_g_j:.2e},\n"
-            f"    - D(f_lambda) = {self.d_f_lambda:.2e},\n"
-            f"    - D(l_lambda) = {self.d_l_lambda:.2e},\n"
-            f"    - MedDev(S)   = {self.meddev_S:.2e},\n"
-            f"    - MaxDev(S)   = {self.maxdev_S:.2e},\n"
-            f"    - N_clip      = {np.sum(~self.lambda_good)} / {self.n_lambda}"
-        )
+        if not silent:
+            print(
+                f"Finish {self.n_iter}th iteration: D(t)={self.dt.total_seconds():.2f} sec! \n"
+                f"    - D(g_j)      = {self.d_g_j:.2e},\n"
+                f"    - D(f_lambda) = {self.d_f_lambda:.2e},\n"
+                f"    - D(l_lambda) = {self.d_l_lambda:.2e},\n"
+                f"    - MedDev(S)   = {self.meddev_S:.2e},\n"
+                f"    - MaxDev(S)   = {self.maxdev_S:.2e},\n"
+                f"    - N_clip      = {np.sum(~self.lambda_good)} / {self.n_lambda}"
+            )
         return
 
     @staticmethod
@@ -353,7 +484,9 @@ class PV2002:
         return np.einsum("ij,i,ijk->k", S_lambda_x, f_lambda, w_lambda_x_j)
 
     @staticmethod
-    def eval_C_lambda(S_lambda_x, w_lambda_x_j, g_j):
+    def eval_C_lambda(
+        S_lambda_x: np.ndarray, w_lambda_x_j: np.ndarray, g_j: np.ndarray
+    ):
         """
         Evaluate C_lambda.
 
@@ -371,10 +504,14 @@ class PV2002:
         ndarray
             ((n_width+1)*osr, (n_width+1)*osr)
         """
-        return np.einsum("ij,ijk,k->i", S_lambda_x, w_lambda_x_j, g_j)
+        if g_j.ndim == 1:
+            return np.einsum("ij,ijk,k->i", S_lambda_x, w_lambda_x_j, g_j)
+        else:
+            assert g_j.ndim == 2
+            return np.einsum("ij,ijk,ik->i", S_lambda_x, w_lambda_x_j, g_j)
 
     @staticmethod
-    def eval_D_lambda(w_lambda_x_j, g_j):
+    def eval_D_lambda(w_lambda_x_j: np.ndarray, g_j: np.ndarray):
         """
         Evaluate D_lambda.
 
@@ -390,7 +527,15 @@ class PV2002:
         ndarray
             (n_lambda,)
         """
-        return np.einsum("ij->i", np.square(np.einsum("ijk,k->ij", w_lambda_x_j, g_j)))
+        if g_j.ndim == 1:
+            return np.einsum(
+                "ij->i", np.square(np.einsum("ijk,k->ij", w_lambda_x_j, g_j))
+            )
+        else:
+            assert g_j.ndim == 2
+            return np.einsum(
+                "ij->i", np.square(np.einsum("ijk,ik->ij", w_lambda_x_j, g_j))
+            )
 
     @staticmethod
     def eval_w_lambda(remainder=0.0247, osr=10, n_pixel=31):
