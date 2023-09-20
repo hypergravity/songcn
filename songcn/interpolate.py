@@ -170,6 +170,7 @@ def test_demo1():
 
     fig.tight_layout()
     fig.savefig("figs/demo_interpolate_distribution.pdf")
+    fig.savefig("figs/demo_interpolate_distribution.png")
 
 
 def test_demo2():
@@ -211,7 +212,9 @@ def test_demo3():
     axs[1].set_xlabel("X")
     fig.tight_layout()
     fig.savefig("figs/demo_interpolation_problem.pdf")
+    fig.savefig("figs/demo_interpolation_problem.png")
 
 
 if __name__ == "__main__":
     test_demo1()
+    test_demo3()
