@@ -20,6 +20,10 @@ def smooth_row(
     chunk_indices = np.array([np.where(mask_diff > 0)[0], np.where(mask_diff < 0)[0]]).T
 
     if regularize:
+        # assume the apertures are regular
+        # limit the left/right edge aperture, extrapolate to the outer region.
+        # so that the outer part of the image (there is light but not identified as apertures)
+        # will not affect the identified ones.
         chunk_indices[0, 0] = max(
             0, chunk_indices[0, 1] - chunk_indices[1, 1] + chunk_indices[1, 0]
         )
