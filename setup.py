@@ -5,14 +5,14 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="songcn",
-    version="0.1.1",
+    version="0.1.2",
     author="Bo Zhang",
     author_email="bozhang@nao.cas.cn",
     description="The SONG-China data processing pipeline.",  # short description
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="http://github.com/hypergravity/songcn",
-    packages = (setuptools.find_packages(),)
+    packages=setuptools.find_packages(),
     # packages=[
     #     "songcn",
     # ],
