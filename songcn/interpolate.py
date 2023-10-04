@@ -51,9 +51,7 @@ def interpolate_distribution(
         assert 0 <= f <= 1, f"Valid f values are between 0 and 1. f={f}"
         x_interp = x_2to12 * f + x_1to12 * (1.0 - f)  # 2x, interpolated x
         c_interp = np.interp(x, x_interp, c_12)  # 1x, interpolated cdf
-        p_interp = (p2_sum * f + p1_sum * (1.0 - f)) * np.hstack(
-            (c_interp[0], np.diff(c_interp))
-        )
+        p_interp = (p2_sum * f + p1_sum * (1.0 - f)) * np.diff(c_interp, prepend=0.0)
         return p_interp[1:]
 
     else:
@@ -65,8 +63,8 @@ def interpolate_distribution(
         for i, _f in enumerate(f):
             x_interp = x_2to12 * _f + x_1to12 * (1.0 - _f)  # 2x, interpolated x
             c_interp = np.interp(x, x_interp, c_12)  # 1x, interpolated cdf
-            p_interp[i] = (p2_sum * _f + p1_sum * (1.0 - _f)) * np.hstack(
-                (c_interp[0], np.diff(c_interp))
+            p_interp[i] = (p2_sum * _f + p1_sum * (1.0 - _f)) * np.diff(
+                c_interp, prepend=0.0
             )
         return p_interp[:, 1:]
 
