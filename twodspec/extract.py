@@ -282,8 +282,8 @@ def extract_aperture(im, ap_center_interp, n_chunks=8, ap_width=15,
 
     # 5. re-extract using profile (robust but not always good)
     spec_extr2 = extract_from_profile(ap_im, prof_recon_masked, var=None)
-    errrr_extr2 = extract_from_profile(ap_im_errrr, prof_recon_masked, var=None)
-    err_extr2 = np.sqrt(errerr_extr2)
+    err_squared_extr2 = extract_from_profile(ap_im_err_squared, prof_recon_masked, var=None)
+    err_extr2 = np.sqrt(err_squared_extr2)
 
     # 6. combine extraction (robust)
     mask_extr = np.abs((spec_extr2 - spec_extr1) / err_extr2) > 3.
