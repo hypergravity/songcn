@@ -39,6 +39,8 @@ def get_aperture_section(im, ap_center_interp, ap_width=15):
         ap_center_interp.
     ap_width : float, optional
         ap_width. The default is 15.
+    im_err_squared: ndarray
+        the square error of the target image
 
     Returns
     -------
@@ -217,7 +219,7 @@ def extract_from_profile(ap_im, prof_recon, var=None):
     return spec_extr1
 
 
-def extract_aperture(im, ap_center_interp, n_chunks=8, ap_width=15,
+def extract_aperture(im, ap_center_interp, im_err_squared=None, n_chunks=8, ap_width=15,
                      profile_oversample=10, profile_smoothness=1e-2,
                      num_sigma_clipping=5., gain=1., ron=0):
     """ extract an aperture given the aperture center
@@ -228,6 +230,8 @@ def extract_aperture(im, ap_center_interp, n_chunks=8, ap_width=15,
         The target image.
     ap_center_interp : ndarray
         The ap_center_interp.
+    im_err_squared: ndarray
+        the square error of the target image
     n_chunks : int, optional
         The number of chunks. The default is 8.
     ap_width : float, optional
@@ -238,7 +242,7 @@ def extract_aperture(im, ap_center_interp, n_chunks=8, ap_width=15,
         The smoothness of the profile. The default is 1e-2.
     num_sigma_clipping : float, optional
         The sigma clipping threshold. The default is 5..
-    gain : float, optional
+    gain : float, optional in unit of (ADU/e-)
         The gain of CCD. The default is 1..
     ron : flaot, optional
         The readout noise of CCD. The default is 0.
@@ -257,7 +261,13 @@ def extract_aperture(im, ap_center_interp, n_chunks=8, ap_width=15,
     ap_im = np.where(ap_im > 0, ap_im, 0)
 
     # error image
-    ap_im_err = np.sqrt(ap_im / gain + ron ** 2.)
+    if im_err_squared is None:
+        ap_im_err_squared = (ap_im/gain + ron ** 2.)*gain**2 # lijiao
+    else:
+        ap_im_err_squared, _, _, _=get_aperture_section(
+        im_err_squared, ap_center_interp, ap_width=ap_width) # lijiao
+    ap_im_err_squared = np.where(ap_im > 0, ap_im_err_squared, 0)
+    ap_im_err = np.sqrt(ap_im_err_squared) # lijiao
 
     # 2. extract profile (quite good so far) for each chunk
     prof_recon, prof_xoversample, prof_oversample, prof_out = extract_profile(
@@ -267,7 +277,8 @@ def extract_aperture(im, ap_center_interp, n_chunks=8, ap_width=15,
 
     # 3. extract using profile
     spec_extr1 = extract_from_profile(ap_im, prof_recon, var=None)
-    err_extr1 = extract_from_profile(ap_im_err, prof_recon, var=None)
+    err_squared_extr1 = extract_from_profile(ap_im_err_squared, prof_recon, var=None) # lijiao
+    err_extr1 = np.sqrt(err_squared_extr1) # lijiao
 
     # 4. 3-sigma clipping
     # reconstruct image
@@ -280,7 +291,8 @@ def extract_aperture(im, ap_center_interp, n_chunks=8, ap_width=15,
 
     # 5. re-extract using profile (robust but not always good)
     spec_extr2 = extract_from_profile(ap_im, prof_recon_masked, var=None)
-    err_extr2 = extract_from_profile(ap_im_err, prof_recon_masked, var=None)
+    err_squared_extr2 = extract_from_profile(ap_im_err_squared, prof_recon_masked, var=None)
+    err_extr2 = np.sqrt(err_squared_extr2)
 
     # 6. combine extraction (robust)
     mask_extr = np.abs((spec_extr2 - spec_extr1) / err_extr2) > 3.
@@ -305,7 +317,7 @@ def extract_aperture(im, ap_center_interp, n_chunks=8, ap_width=15,
         mask_extr=mask_extr,
         # ----- simple extraction -----
         spec_sum=ap_im.sum(axis=1),
-        err_sum=ap_im_err.sum(axis=1),
+        err_sum=np.sqrt(ap_im_err_squared.sum(axis=1)),
         # ----- reconstructed profile -----
         prof_recon=prof_recon,
         # ----- reconstructed aperture -----
