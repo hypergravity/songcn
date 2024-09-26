@@ -11,5 +11,8 @@ tqdm
 # sphinx packages
 sphinx-copybutton
 recommonmark
-furo
 nbsphinx
+
+# theme
+furo
+sphinx-rtd-theme
