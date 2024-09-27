@@ -6,4 +6,4 @@ joblib==1.4.2
 numba==0.59.0
 scikit-image==0.20.0
 scikit-learn==1.5.1
-tqdm
+tqdm==4.66.5
