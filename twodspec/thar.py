@@ -47,8 +47,8 @@ def corr_thar(wave_temp, thar_temp, thar_obs, maxshift=100):
     # assert number of orders are the same
     assert thar_obs.shape == thar_temp.shape
     nrow, ncol = thar_temp.shape
-    icol0 = np.int(0.25 * ncol)
-    icol1 = np.int(0.75 * ncol)
+    icol0 = int(0.25 * ncol)
+    icol1 = int(0.75 * ncol)
     assert icol0 > maxshift
 
     nshift_grid = np.arange(-maxshift, maxshift + 1)
@@ -211,7 +211,7 @@ def find_lines(wave_init, thar_obs, thar_line_list, npix_chunk=20, ccf_kernel_wi
         for this_line in this_line_list:
             # init x position
             this_line_x_init = np.interp(this_line, this_wave_init, xcoord)
-            this_line_x_init_int = np.int(this_line_x_init)  # np.argmin(np.abs((this_wave_init-this_line)))
+            this_line_x_init_int = int(this_line_x_init)  # np.argmin(np.abs((this_wave_init-this_line)))
 
             # get a chunk
             if npix_chunk < this_line_x_init_int < npix - npix_chunk:

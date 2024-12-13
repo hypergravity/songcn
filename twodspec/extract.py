@@ -39,6 +39,8 @@ def get_aperture_section(im, ap_center_interp, ap_width=15):
         ap_center_interp.
     ap_width : float, optional
         ap_width. The default is 15.
+    im_err_squared: ndarray
+        the square error of the target image
 
     Returns
     -------
@@ -67,7 +69,7 @@ def get_aperture_section(im, ap_center_interp, ap_width=15):
 
     ap_im_xx_flat = ap_im_xx.flatten()
     ap_im_yy_flat = ap_im_yy.flatten()
-    ap_im_flat = np.zeros_like(ap_im_xx_flat, dtype=np.float)
+    ap_im_flat = np.zeros_like(ap_im_xx_flat, dtype=np.float64)
 
     ind_valid = (ap_im_xx_flat >= 0) & (ap_im_xx_flat <= n_cols-1)
     ap_im_flat[ind_valid] = im[ap_im_yy_flat[ind_valid], ap_im_xx_flat[ind_valid]]
@@ -122,7 +124,7 @@ def extract_profile(ap_im, ap_im_xx_cor, profile_smoothness=1e-2, n_chunks=8,
     """
     # 0. determine chunk length
     n_rows = ap_im.shape[0]
-    chunk_len = np.int(n_rows / n_chunks)
+    chunk_len = int(n_rows / n_chunks)
     chunk_centers = chunk_len * (np.arange(n_chunks) + 0.5)
     chunk_start = chunk_len * np.arange(n_chunks)
 
@@ -217,7 +219,7 @@ def extract_from_profile(ap_im, prof_recon, var=None):
     return spec_extr1
 
 
-def extract_aperture(im, ap_center_interp, n_chunks=8, ap_width=15,
+def extract_aperture(im, ap_center_interp, im_err_squared=None, n_chunks=8, ap_width=15,
                      profile_oversample=10, profile_smoothness=1e-2,
                      num_sigma_clipping=5., gain=1., ron=0):
     """ extract an aperture given the aperture center
@@ -228,6 +230,8 @@ def extract_aperture(im, ap_center_interp, n_chunks=8, ap_width=15,
         The target image.
     ap_center_interp : ndarray
         The ap_center_interp.
+    im_err_squared: ndarray
+        the square error of the target image
     n_chunks : int, optional
         The number of chunks. The default is 8.
     ap_width : float, optional
@@ -238,7 +242,7 @@ def extract_aperture(im, ap_center_interp, n_chunks=8, ap_width=15,
         The smoothness of the profile. The default is 1e-2.
     num_sigma_clipping : float, optional
         The sigma clipping threshold. The default is 5..
-    gain : float, optional
+    gain : float, optional in unit of (ADU/e-)
         The gain of CCD. The default is 1..
     ron : flaot, optional
         The readout noise of CCD. The default is 0.
@@ -257,7 +261,13 @@ def extract_aperture(im, ap_center_interp, n_chunks=8, ap_width=15,
     ap_im = np.where(ap_im > 0, ap_im, 0)
 
     # error image
-    ap_im_err = np.sqrt(ap_im / gain + ron ** 2.)
+    if im_err_squared is None:
+        ap_im_err_squared = (ap_im/gain + ron ** 2.)*gain**2 # lijiao
+    else:
+        ap_im_err_squared, _, _, _=get_aperture_section(
+        im_err_squared, ap_center_interp, ap_width=ap_width) # lijiao
+    ap_im_err_squared = np.where(ap_im > 0, ap_im_err_squared, 0)
+    ap_im_err = np.sqrt(ap_im_err_squared) # lijiao
 
     # 2. extract profile (quite good so far) for each chunk
     prof_recon, prof_xoversample, prof_oversample, prof_out = extract_profile(
@@ -267,7 +277,8 @@ def extract_aperture(im, ap_center_interp, n_chunks=8, ap_width=15,
 
     # 3. extract using profile
     spec_extr1 = extract_from_profile(ap_im, prof_recon, var=None)
-    err_extr1 = extract_from_profile(ap_im_err, prof_recon, var=None)
+    err_squared_extr1 = extract_from_profile(ap_im_err_squared, prof_recon, var=None) # lijiao
+    err_extr1 = np.sqrt(err_squared_extr1) # lijiao
 
     # 4. 3-sigma clipping
     # reconstruct image
@@ -280,7 +291,8 @@ def extract_aperture(im, ap_center_interp, n_chunks=8, ap_width=15,
 
     # 5. re-extract using profile (robust but not always good)
     spec_extr2 = extract_from_profile(ap_im, prof_recon_masked, var=None)
-    err_extr2 = extract_from_profile(ap_im_err, prof_recon_masked, var=None)
+    err_squared_extr2 = extract_from_profile(ap_im_err_squared, prof_recon_masked, var=None)
+    err_extr2 = np.sqrt(err_squared_extr2)
 
     # 6. combine extraction (robust)
     mask_extr = np.abs((spec_extr2 - spec_extr1) / err_extr2) > 3.
@@ -305,7 +317,7 @@ def extract_aperture(im, ap_center_interp, n_chunks=8, ap_width=15,
         mask_extr=mask_extr,
         # ----- simple extraction -----
         spec_sum=ap_im.sum(axis=1),
-        err_sum=ap_im_err.sum(axis=1),
+        err_sum=np.sqrt(ap_im_err_squared.sum(axis=1)),
         # ----- reconstructed profile -----
         prof_recon=prof_recon,
         # ----- reconstructed aperture -----
@@ -360,7 +372,7 @@ def extract_sum(ap_im, ap_im_xx_cor, ap_width=15):
 # extract all apertures
 ####################################
 
-def extract_all(im, ap, n_chunks=8, profile_oversample=10, profile_smoothness=1e-2,
+def extract_all(im, ap, im_err_squared=None, n_chunks=8, ap_width=15, profile_oversample=10, profile_smoothness=1e-2,
                 num_sigma_clipping=10, gain=1., ron=0, n_jobs=-1,
                 verbose=False, backend="multiprocessing"):
     """ extract all apertures with both simple & profile extraction
@@ -373,6 +385,8 @@ def extract_all(im, ap, n_chunks=8, profile_oversample=10, profile_smoothness=1e
         The Aperture instance.
     n_chunks : int, optional
         The number of chunks. The default is 8.
+    ap_width : float, optional
+        The width of aperture / pix. The default is 15.
     profile_oversample : int, optional
         The oversampling factor of the profile. The default is 10.
     profile_smoothness : float, optional
@@ -398,25 +412,27 @@ def extract_all(im, ap, n_chunks=8, profile_oversample=10, profile_smoothness=1e
     """
     # extract all apertures in parallel
     rs = joblib.Parallel(n_jobs=n_jobs, verbose=verbose, backend=backend)(joblib.delayed(extract_aperture)(
-        im, ap.ap_center_interp[i], n_chunks=n_chunks, profile_oversample=profile_oversample,
-        profile_smoothness=profile_smoothness, num_sigma_clipping=num_sigma_clipping, gain=gain, ron=ron)
-                                                   for i in range(ap.nap))
+        im, ap.ap_center_interp[i], im_err_squared=im_err_squared,
+        n_chunks=n_chunks, profile_oversample=profile_oversample,
+        profile_smoothness=profile_smoothness,
+        num_sigma_clipping=num_sigma_clipping, gain=gain, ron=ron)
+                                                 for i in np.arange(ap.nap))
     # reconstruct results
     result = dict(
         # combbined
-        spec_extr=np.array([rs[i]["spec_extr"] for i in range(ap.nap)]),
-        err_extr=np.array([rs[i]["err_extr"] for i in range(ap.nap)]),
+        spec_extr=np.array([rs[i]["spec_extr"] for i in np.arange(ap.nap)]),
+        err_extr=np.array([rs[i]["err_extr"] for i in np.arange(ap.nap)]),
         # profile extraction
-        spec_extr1=np.array([rs[i]["spec_extr1"] for i in range(ap.nap)]),
-        err_extr1=np.array([rs[i]["err_extr1"] for i in range(ap.nap)]),
+        spec_extr1=np.array([rs[i]["spec_extr1"] for i in np.arange(ap.nap)]),
+        err_extr1=np.array([rs[i]["err_extr1"] for i in np.arange(ap.nap)]),
         # profile extraction sigma-clipping
-        spec_extr2=np.array([rs[i]["spec_extr2"] for i in range(ap.nap)]),
-        err_extr2=np.array([rs[i]["err_extr2"] for i in range(ap.nap)]),
+        spec_extr2=np.array([rs[i]["spec_extr2"] for i in np.arange(ap.nap)]),
+        err_extr2=np.array([rs[i]["err_extr2"] for i in np.arange(ap.nap)]),
         # simple extraction
-        spec_sum=np.array([rs[i]["spec_sum"] for i in range(ap.nap)]),
-        err_sum=np.array([rs[i]["err_sum"] for i in range(ap.nap)]),
+        spec_sum=np.array([rs[i]["spec_sum"] for i in np.arange(ap.nap)]),
+        err_sum=np.array([rs[i]["err_sum"] for i in np.arange(ap.nap)]),
         # 1 for difference > 3 sigma
-        mask_extr=np.array([rs[i]["mask_extr"] for i in range(ap.nap)]),
+        mask_extr=np.array([rs[i]["mask_extr"] for i in np.arange(ap.nap)]),
     )
     return result
 
@@ -435,8 +451,8 @@ def local_filter1(x, kw=5, method="mean"):
         raise(ValueError("bad value for method!"))
 
     xs = np.copy(x)
-    for i in range(kw, np.int(len(x) - kw)):
-        xs[i] = f(x[np.int(i - kw):np.int(i + kw + 1)])
+    for i in range(kw, int(len(x) - kw)):
+        xs[i] = f(x[int(i - kw):int(i + kw + 1)])
     return xs
 
 
@@ -492,12 +508,20 @@ def make_normflat(im, ap, max_dqe=0.04, min_snr=20, smooth_blaze=5, n_chunks=8,
         profile_oversample=profile_oversample,
         profile_smoothness=profile_smoothness,
         num_sigma_clipping=num_sigma_clipping,
-        gain=gain, ron=ron) for i in range(ap.nap))
+        gain=gain, ron=ron) for i in np.arange(ap.nap))
+    #rs = []
+    #for i in np.arange(ap.nap):
+    #    _rs = extract_aperture(im, ap.ap_center_interp[i], n_chunks=n_chunks, ap_width=ap.ap_width,
+    #                           profile_oversample=profile_oversample,
+    #                           profile_smoothness=profile_smoothness,
+    #                           num_sigma_clipping=num_sigma_clipping,
+    #                           gain=gain, ron=ron)
+    #    rs.append(_rs)
     # gather results
-    for i in range(ap.nap):
+    for i in np.arange(ap.nap):
         # smooth blaze function (use spec_extr1???)
-        this_blaze_smoothed1 = local_filter1(rs[i]["spec_extr1"], kw=np.int(smooth_blaze), method="median")
-        this_blaze_smoothed2 = local_filter1(this_blaze_smoothed1, kw=np.int(smooth_blaze), method="mean")
+        this_blaze_smoothed1 = local_filter1(rs[i]["spec_extr1"], kw=int(smooth_blaze), method="median")
+        this_blaze_smoothed2 = local_filter1(this_blaze_smoothed1, kw=int(smooth_blaze), method="mean")
         blaze.append(this_blaze_smoothed2)
         im_recon[rs[i]["ap_im_yy"], rs[i]["ap_im_xx"]] = rs[i]["prof_recon"] * this_blaze_smoothed2.reshape(-1, 1)
     blaze = np.array(blaze)

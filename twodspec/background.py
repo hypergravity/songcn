@@ -31,8 +31,8 @@ from scipy.signal import medfilt2d
 
 def straight_line(x, y):
     """ return coefs for a straight line """
-    a = np.float(np.diff(y) / np.diff(x))
-    b = np.float(y[0] - a * x[0])
+    a = np.float64(np.diff(y) / np.diff(x))
+    b = np.float64(y[0] - a * x[0])
     return a, b
 
 
@@ -63,7 +63,7 @@ def apbackground(img, ap_center, q=(50, 5), npix_inter=7, sigma=(10, 10),
     n_ap = ap_center.shape[0]
     nrow, ncol = img.shape
     x = np.arange(ncol, dtype=float)
-    npix_inter_hf = np.int(npix_inter / 2)
+    npix_inter_hf = int(npix_inter / 2)
     if isinstance(q, tuple):
         q = np.linspace(q[0], q[1], n_ap)
 
@@ -79,9 +79,9 @@ def apbackground(img, ap_center, q=(50, 5), npix_inter=7, sigma=(10, 10),
                 i_med = ap_center[i_ap][i_row]
                 i_med_l = 2 * i_med - i_med_r
 
-                i_med_r = np.int(i_med_r)
-                # i_med = np.int(i_med)
-                i_med_l = np.int(i_med_l)
+                i_med_r = int(i_med_r)
+                # i_med = int(i_med)
+                i_med_l = int(i_med_l)
 
                 y_med_r = np.percentile(
                     img[i_row, np.max((0, i_med_r - npix_inter_hf)):np.max((1, i_med_r + npix_inter_hf + 1))], q[i_ap])
@@ -98,9 +98,9 @@ def apbackground(img, ap_center, q=(50, 5), npix_inter=7, sigma=(10, 10),
                     i_row]) / 2
                 i_med_r = 2 * i_med - i_med_l
 
-                # i_med = np.int(i_med)
-                i_med_r = np.int(i_med_r)
-                i_med_l = np.int(i_med_l)
+                # i_med = int(i_med)
+                i_med_r = int(i_med_r)
+                i_med_l = int(i_med_l)
 
                 y_med_r = np.percentile(
                     img[i_row, i_med_r - npix_inter_hf:i_med_r + npix_inter_hf + 1], q[i_ap])
@@ -116,9 +116,9 @@ def apbackground(img, ap_center, q=(50, 5), npix_inter=7, sigma=(10, 10),
                 i_med_l = (ap_center[i_ap - 1][i_row] + ap_center[i_ap][i_row]) / 2
                 i_med_r = (ap_center[i_ap][i_row] + ap_center[i_ap + 1][i_row]) / 2
 
-                # i_med = np.int(i_med)
-                i_med_r = np.int(i_med_r)
-                i_med_l = np.int(i_med_l)
+                # i_med = int(i_med)
+                i_med_r = int(i_med_r)
+                i_med_l = int(i_med_l)
 
                 y_med_r = np.percentile(
                     img[i_row, np.min((ncol-1, i_med_r - npix_inter_hf)):np.min((ncol, i_med_r + npix_inter_hf + 1))], q[i_ap])
